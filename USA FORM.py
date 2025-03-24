@@ -2,13 +2,22 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from PIL import Image
+import os
 
-# Initialize session state for the data if not already done
-if "data" not in st.session_state:
-    st.session_state.data = pd.DataFrame(columns=["Agent Name", "TYPE", "ID", "COMMENT", "Timestamp"])
+# Define the path to the CSV file where the data will be stored
+DATA_FILE = 'shared_data.csv'
+
+# Load the data from the CSV file if it exists
+if os.path.exists(DATA_FILE):
+    data = pd.read_csv(DATA_FILE)
+else:
+    # If the file doesn't exist, create an empty DataFrame
+    columns = ["Agent Name", "TYPE", "ID", "COMMENT", "Timestamp"]
+    data = pd.DataFrame(columns=columns)
 
 # Function to submit data
 def submit_data(agent_name, type_, id_, comment):
+    global data
     # Add the new data with timestamp
     new_data = {
         "Agent Name": agent_name,
@@ -21,15 +30,18 @@ def submit_data(agent_name, type_, id_, comment):
     # Create a new DataFrame for the new data
     new_row = pd.DataFrame([new_data])
 
-    # Concatenate the new row to the existing DataFrame in session state
-    st.session_state.data = pd.concat([st.session_state.data, new_row], ignore_index=True)
+    # Concatenate the new row to the existing DataFrame
+    data = pd.concat([data, new_row], ignore_index=True)
+
+    # Save the updated data back to the CSV file
+    data.to_csv(DATA_FILE, index=False)
 
     # Return the updated dataframe after submission
-    return st.session_state.data
+    return data
 
 # Function to refresh the data (to show all submissions)
 def refresh_data():
-    return st.session_state.data
+    return data
 
 # Function to check the latest uploaded image
 def check_hold():
