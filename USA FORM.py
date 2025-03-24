@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime
 import os
 
-# Fetch Firebase credentials from environment variables (for security)
+# Path to your Firebase JSON key
 firebase_key = os.getenv('FIREBASE_KEY')
 
 # Initialize Firebase app (only if not already initialized)
@@ -13,7 +13,7 @@ if firebase_key and not firebase_admin._apps:
     cred = credentials.Certificate(firebase_key)
     firebase_admin.initialize_app(cred)
 else:
-    print("Firebase credentials not set")
+    st.error("Firebase credentials not found. Please set the FIREBASE_KEY environment variable.")
 
 # Firestore client
 db = firestore.client()
@@ -25,7 +25,7 @@ data = pd.DataFrame(columns=columns)
 # Function to submit data to Firestore
 def submit_data(agent_name, type_, id_, comment):
     global data
-    
+
     # Add the new data with timestamp
     new_data = {
         "Agent Name": agent_name,
@@ -46,34 +46,22 @@ def submit_data(agent_name, type_, id_, comment):
 
 # Function to refresh the data from Firestore
 def refresh_data():
-    # Get all documents from Firestore
-    docs = db.collection('form_data').stream()
-    firestore_data = []
-    for doc in docs:
-        firestore_data.append(doc.to_dict())
-
-    # Convert to DataFrame
-    firestore_df = pd.DataFrame(firestore_data)
-    return firestore_df
-
-# Function to upload an image
-def upload_image(image):
-    # This function can be extended to upload images to Firestore or a storage service
-    # Currently it just returns the image object
-    return image
-
-# Function to check the latest uploaded image
-def check_hold():
-    return image_storage.get("image", "No image uploaded yet.")
-
-# Initialize image storage (for the hold section)
-image_storage = {"image": None}
+    try:
+        docs = db.collection('form_data').stream()
+        firestore_data = []
+        for doc in docs:
+            firestore_data.append(doc.to_dict())
+        firestore_df = pd.DataFrame(firestore_data)
+        return firestore_df
+    except Exception as e:
+        st.error(f"Error fetching data from Firestore: {e}")
+        return pd.DataFrame()  # return an empty DataFrame in case of error
 
 # Streamlit UI
 st.title("USA Collab Form")
 
 # Tabs
-tab = st.sidebar.radio("Select Tab", ["Request", "HOLD"])
+tab = st.sidebar.radio("Select Tab", ["Request"])
 
 if tab == "Request":
     st.header("Request Section")
@@ -96,21 +84,3 @@ if tab == "Request":
     if refresh_button:
         refreshed_data = refresh_data()
         st.dataframe(refreshed_data)
-
-elif tab == "HOLD":
-    st.header("HOLD Section")
-
-    # Image upload
-    image_input = st.file_uploader("Upload Image (HOLD Section)", type=["png", "jpg", "jpeg"])
-
-    if image_input:
-        image_storage["image"] = image_input
-        st.image(image_input, caption="Uploaded Image")
-
-    # Check hold button
-    if st.button("Check Latest Image"):
-        image = check_hold()
-        if isinstance(image, str):
-            st.write(image)
-        else:
-            st.image(image, caption="Latest Uploaded Image")
