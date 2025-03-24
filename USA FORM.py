@@ -2,14 +2,12 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-# Initialize an empty DataFrame to store the data (for the session)
-columns = ["Agent Name", "TYPE", "ID", "COMMENT", "Timestamp"]
-data = pd.DataFrame(columns=columns)
+# Initialize an empty DataFrame if not already in session state
+if "data" not in st.session_state:
+    st.session_state.data = pd.DataFrame(columns=["Agent Name", "TYPE", "ID", "COMMENT", "Timestamp"])
 
 # Function to submit data
 def submit_data(agent_name, type_, id_, comment):
-    global data
-    
     # Add the new data with timestamp
     new_data = {
         "Agent Name": agent_name,
@@ -21,9 +19,7 @@ def submit_data(agent_name, type_, id_, comment):
 
     # Add to local DataFrame for display
     new_row = pd.DataFrame([new_data])
-    data = pd.concat([data, new_row], ignore_index=True)
-
-    return data
+    st.session_state.data = pd.concat([st.session_state.data, new_row], ignore_index=True)
 
 # Streamlit UI
 st.title("USA Collab Form")
@@ -46,11 +42,11 @@ if tab == "Request":
 
     # Output Dataframe
     if submit_button:
-        data = submit_data(agent_name_input, type_input, id_input, comment_input)
-        st.dataframe(data)
+        submit_data(agent_name_input, type_input, id_input, comment_input)
+        st.dataframe(st.session_state.data)
 
     if refresh_button:
-        st.dataframe(data)
+        st.dataframe(st.session_state.data)
 
 elif tab == "HOLD":
     st.header("HOLD Section")
