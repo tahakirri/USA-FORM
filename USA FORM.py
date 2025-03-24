@@ -3,13 +3,12 @@ import pandas as pd
 from datetime import datetime
 from PIL import Image
 
-# Initialize an empty DataFrame to store the data
-columns = ["Agent Name", "TYPE", "ID", "COMMENT", "Timestamp"]
-data = pd.DataFrame(columns=columns)
+# Initialize session state for the data if not already done
+if "data" not in st.session_state:
+    st.session_state.data = pd.DataFrame(columns=["Agent Name", "TYPE", "ID", "COMMENT", "Timestamp"])
 
 # Function to submit data
 def submit_data(agent_name, type_, id_, comment):
-    global data
     # Add the new data with timestamp
     new_data = {
         "Agent Name": agent_name,
@@ -22,15 +21,15 @@ def submit_data(agent_name, type_, id_, comment):
     # Create a new DataFrame for the new data
     new_row = pd.DataFrame([new_data])
 
-    # Concatenate the new row to the existing DataFrame
-    data = pd.concat([data, new_row], ignore_index=True)
+    # Concatenate the new row to the existing DataFrame in session state
+    st.session_state.data = pd.concat([st.session_state.data, new_row], ignore_index=True)
 
     # Return the updated dataframe after submission
-    return data
+    return st.session_state.data
 
 # Function to refresh the data (to show all submissions)
 def refresh_data():
-    return data
+    return st.session_state.data
 
 # Function to check the latest uploaded image
 def check_hold():
