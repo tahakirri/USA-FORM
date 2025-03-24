@@ -1,14 +1,29 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import firebase_admin
+from firebase_admin import credentials, firestore
 
-# Initialize an empty DataFrame if not already in session state
-if "data" not in st.session_state:
-    st.session_state.data = pd.DataFrame(columns=["Agent Name", "TYPE", "ID", "COMMENT", "Timestamp"])
+# Initialize Firebase Admin SDK with your credentials
+cred = credentials.Certificate("path_to_your_firebase_credential.json")  # Path to your Firebase Admin SDK JSON file
+firebase_admin.initialize_app(cred)
 
-# Function to submit data
-def submit_data(agent_name, type_, id_, comment):
-    # Add the new data with timestamp
+# Firestore Database instance
+db = firestore.client()
+
+# Reference to the Firestore collection where data will be stored
+collection_ref = db.collection("collab_form_data")
+
+# Function to fetch data from Firestore
+def fetch_data_from_firestore():
+    docs = collection_ref.stream()
+    data = []
+    for doc in docs:
+        data.append(doc.to_dict())
+    return pd.DataFrame(data)
+
+# Function to submit data to Firestore
+def submit_data_to_firestore(agent_name, type_, id_, comment):
     new_data = {
         "Agent Name": agent_name,
         "TYPE": type_,
@@ -16,10 +31,7 @@ def submit_data(agent_name, type_, id_, comment):
         "COMMENT": comment,
         "Timestamp": datetime.now().strftime("%H:%M:%S")  # Only time (hour:minute:second)
     }
-
-    # Add to local DataFrame for display
-    new_row = pd.DataFrame([new_data])
-    st.session_state.data = pd.concat([st.session_state.data, new_row], ignore_index=True)
+    collection_ref.add(new_data)
 
 # Streamlit UI
 st.title("USA Collab Form")
@@ -40,13 +52,15 @@ if tab == "Request":
     submit_button = st.button("Submit Data")
     refresh_button = st.button("Refresh Data")
 
-    # Output Dataframe
+    # Submit data to Firestore
     if submit_button:
-        submit_data(agent_name_input, type_input, id_input, comment_input)
-        st.dataframe(st.session_state.data)
+        submit_data_to_firestore(agent_name_input, type_input, id_input, comment_input)
+        st.success("Data submitted successfully!")
 
+    # Refresh and fetch the latest data from Firestore
     if refresh_button:
-        st.dataframe(st.session_state.data)
+        data = fetch_data_from_firestore()
+        st.dataframe(data)
 
 elif tab == "HOLD":
     st.header("HOLD Section")
