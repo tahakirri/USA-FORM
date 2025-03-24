@@ -1,18 +1,19 @@
-pip freeze > requirements.txt
-
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore
 import pandas as pd
 from datetime import datetime
+import os
 
-# Path to your Firebase JSON key
-key_path = r"C:\Users\Taha\Downloads\usa-form-360ea-firebase-adminsdk-fbsvc-742a7301b4.json"
+# Fetch Firebase credentials from environment variables (for security)
+firebase_key = os.getenv('FIREBASE_KEY')
 
 # Initialize Firebase app (only if not already initialized)
-if not firebase_admin._apps:
-    cred = credentials.Certificate(key_path)
+if firebase_key and not firebase_admin._apps:
+    cred = credentials.Certificate(firebase_key)
     firebase_admin.initialize_app(cred)
+else:
+    print("Firebase credentials not set")
 
 # Firestore client
 db = firestore.client()
@@ -113,5 +114,3 @@ elif tab == "HOLD":
             st.write(image)
         else:
             st.image(image, caption="Latest Uploaded Image")
-
-# Firebase Firestore functionality
