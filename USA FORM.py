@@ -1,31 +1,15 @@
 import streamlit as st
-import firebase_admin
-from firebase_admin import credentials, firestore
 import pandas as pd
 from datetime import datetime
-import os
-
-# Path to your Firebase JSON key
-firebase_key = os.getenv('FIREBASE_KEY')
-
-# Initialize Firebase app (only if not already initialized)
-if firebase_key and not firebase_admin._apps:
-    cred = credentials.Certificate(firebase_key)
-    firebase_admin.initialize_app(cred)
-else:
-    st.error("Firebase credentials not found. Please set the FIREBASE_KEY environment variable.")
-
-# Firestore client
-db = firestore.client()
 
 # Initialize an empty DataFrame to store the data (for the session)
 columns = ["Agent Name", "TYPE", "ID", "COMMENT", "Timestamp"]
 data = pd.DataFrame(columns=columns)
 
-# Function to submit data to Firestore
+# Function to submit data
 def submit_data(agent_name, type_, id_, comment):
     global data
-
+    
     # Add the new data with timestamp
     new_data = {
         "Agent Name": agent_name,
@@ -35,33 +19,17 @@ def submit_data(agent_name, type_, id_, comment):
         "Timestamp": datetime.now().strftime("%H:%M:%S")  # Only time (hour:minute:second)
     }
 
-    # Add to Firestore collection
-    db.collection('form_data').add(new_data)
-
     # Add to local DataFrame for display
     new_row = pd.DataFrame([new_data])
     data = pd.concat([data, new_row], ignore_index=True)
 
     return data
 
-# Function to refresh the data from Firestore
-def refresh_data():
-    try:
-        docs = db.collection('form_data').stream()
-        firestore_data = []
-        for doc in docs:
-            firestore_data.append(doc.to_dict())
-        firestore_df = pd.DataFrame(firestore_data)
-        return firestore_df
-    except Exception as e:
-        st.error(f"Error fetching data from Firestore: {e}")
-        return pd.DataFrame()  # return an empty DataFrame in case of error
-
 # Streamlit UI
 st.title("USA Collab Form")
 
 # Tabs
-tab = st.sidebar.radio("Select Tab", ["Request"])
+tab = st.sidebar.radio("Select Tab", ["Request", "HOLD"])
 
 if tab == "Request":
     st.header("Request Section")
@@ -82,5 +50,17 @@ if tab == "Request":
         st.dataframe(data)
 
     if refresh_button:
-        refreshed_data = refresh_data()
-        st.dataframe(refreshed_data)
+        st.dataframe(data)
+
+elif tab == "HOLD":
+    st.header("HOLD Section")
+
+    # Image upload
+    image_input = st.file_uploader("Upload Image (HOLD Section)", type=["png", "jpg", "jpeg"])
+
+    if image_input:
+        st.image(image_input, caption="Uploaded Image")
+
+    # Check hold button
+    if st.button("Check Latest Image"):
+        st.write("No image uploaded yet.")
