@@ -1,29 +1,16 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import firebase_admin
-from firebase_admin import credentials, firestore
+from PIL import Image
 
-# Initialize Firebase Admin SDK with your credentials
-cred = credentials.Certificate("path_to_your_firebase_credential.json")  # Path to your Firebase Admin SDK JSON file
-firebase_admin.initialize_app(cred)
+# Initialize an empty DataFrame to store the data
+columns = ["Agent Name", "TYPE", "ID", "COMMENT", "Timestamp"]
+data = pd.DataFrame(columns=columns)
 
-# Firestore Database instance
-db = firestore.client()
-
-# Reference to the Firestore collection where data will be stored
-collection_ref = db.collection("collab_form_data")
-
-# Function to fetch data from Firestore
-def fetch_data_from_firestore():
-    docs = collection_ref.stream()
-    data = []
-    for doc in docs:
-        data.append(doc.to_dict())
-    return pd.DataFrame(data)
-
-# Function to submit data to Firestore
-def submit_data_to_firestore(agent_name, type_, id_, comment):
+# Function to submit data
+def submit_data(agent_name, type_, id_, comment):
+    global data
+    # Add the new data with timestamp
     new_data = {
         "Agent Name": agent_name,
         "TYPE": type_,
@@ -31,46 +18,65 @@ def submit_data_to_firestore(agent_name, type_, id_, comment):
         "COMMENT": comment,
         "Timestamp": datetime.now().strftime("%H:%M:%S")  # Only time (hour:minute:second)
     }
-    collection_ref.add(new_data)
 
-# Streamlit UI
-st.title("USA Collab Form")
+    # Create a new DataFrame for the new data
+    new_row = pd.DataFrame([new_data])
+
+    # Concatenate the new row to the existing DataFrame
+    data = pd.concat([data, new_row], ignore_index=True)
+
+    # Return the updated dataframe after submission
+    return data
+
+# Function to refresh the data (to show all submissions)
+def refresh_data():
+    return data
+
+# Function to check the latest uploaded image
+def check_hold():
+    return image_storage["image"]
+
+# Initialize the image storage as a dictionary
+image_storage = {"image": None}
+
+# Streamlit interface
+st.title("USA Collab")
 
 # Tabs
-tab = st.sidebar.radio("Select Tab", ["Request", "HOLD"])
+tab = st.radio("Choose a Section", ["Request", "HOLD"])
 
+# Request Tab
 if tab == "Request":
     st.header("Request Section")
-
-    # Input fields for Agent Name, Type, ID, Comment
-    agent_name_input = st.text_input("Agent Name", placeholder="Enter Agent Name")
+    
+    # Create input fields for Agent Name, Type, ID, Comment
+    agent_name_input = st.text_input("Agent Name")
     type_input = st.selectbox("Type", ["Email", "Phone Number", "Ticket ID"])
-    id_input = st.text_input("ID", placeholder="Enter ID")
-    comment_input = st.text_area("Comment", placeholder="Enter Comment")
+    id_input = st.text_input("ID")
+    comment_input = st.text_area("Comment")
+    
+    # Create buttons for submit and refresh
+    if st.button("Submit Data"):
+        data = submit_data(agent_name_input, type_input, id_input, comment_input)
+        st.write("Data Submitted!")
+    
+    if st.button("Refresh Data"):
+        st.write("Data Table:")
+        st.write(refresh_data())
 
-    # Buttons
-    submit_button = st.button("Submit Data")
-    refresh_button = st.button("Refresh Data")
-
-    # Submit data to Firestore
-    if submit_button:
-        submit_data_to_firestore(agent_name_input, type_input, id_input, comment_input)
-        st.success("Data submitted successfully!")
-
-    # Refresh and fetch the latest data from Firestore
-    if refresh_button:
-        data = fetch_data_from_firestore()
-        st.dataframe(data)
-
-elif tab == "HOLD":
+# HOLD Tab
+if tab == "HOLD":
     st.header("HOLD Section")
 
-    # Image upload
-    image_input = st.file_uploader("Upload Image (HOLD Section)", type=["png", "jpg", "jpeg"])
+    # Inputs for image upload
+    uploaded_image = st.file_uploader("Upload Image (HOLD Section)", type=["jpg", "jpeg", "png"])
 
-    if image_input:
-        st.image(image_input, caption="Uploaded Image")
+    if uploaded_image:
+        image_storage["image"] = Image.open(uploaded_image)
+        st.image(image_storage["image"], caption="Uploaded Image", use_column_width=True)
 
-    # Check hold button
-    if st.button("Check Latest Image"):
-        st.write("No image uploaded yet.")
+    if st.button("CHECK HOLD"):
+        if image_storage["image"] is not None:
+            st.image(image_storage["image"], caption="Latest Uploaded Image", use_column_width=True)
+        else:
+            st.write("No image uploaded.")
