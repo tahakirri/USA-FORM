@@ -59,7 +59,11 @@ if tab == "Request":
     if st.button("Submit Data"):
         data = submit_data(agent_name_input, type_input, id_input, comment_input)
         st.write("Data Submitted!")
-    
+        
+        # Display the submitted data after submission
+        st.write("Latest Submitted Data:")
+        st.write(data.tail(1))  # Display only the last submitted row
+
     if st.button("Refresh Data"):
         st.write("Data Table:")
         st.write(refresh_data())
