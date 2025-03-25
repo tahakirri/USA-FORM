@@ -2,7 +2,13 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import os
+import io
 from PIL import Image
+
+# Ensure a directory exists for storing uploaded images
+UPLOAD_DIRECTORY = 'uploaded_images'
+os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
+LATEST_IMAGE_PATH = os.path.join(UPLOAD_DIRECTORY, 'latest_hold_image.jpg')
 
 # Custom CSS for dark mode and enhanced styling
 st.set_page_config(
@@ -63,18 +69,23 @@ st.markdown("""
 REQUEST_FILE = 'request_data.csv'
 MISTAKE_FILE = 'mistake_data.csv'
 
+# Ensure files exist
+for file in [REQUEST_FILE, MISTAKE_FILE]:
+    if not os.path.exists(file):
+        pd.DataFrame().to_csv(file, index=False)
+
 # Load request data with Completed column
-if os.path.exists(REQUEST_FILE):
+try:
     request_data = pd.read_csv(REQUEST_FILE)
     if "Completed" not in request_data.columns:
         request_data["Completed"] = False
-else:
+except pd.errors.EmptyDataError:
     request_data = pd.DataFrame(columns=["Completed", "Agent Name", "TYPE", "ID", "COMMENT", "Timestamp"])
 
 # Load mistake data
-if os.path.exists(MISTAKE_FILE):
+try:
     mistake_data = pd.read_csv(MISTAKE_FILE)
-else:
+except pd.errors.EmptyDataError:
     mistake_data = pd.DataFrame(columns=["Team Leader Name", "Agent Name", "Ticket ID", "Error", "Timestamp"])
 
 # Sidebar for navigation with icons
@@ -101,13 +112,30 @@ if section == "📋 Request":
         comment_input = st.text_area("💬 Comment", height=150, key="comment")  
     
     # Side-by-side buttons
-    btn_col1, btn_col2 = st.columns(2)
+    btn_col1, btn_col2, btn_col3 = st.columns(3)
     
     with btn_col1:
         submit_button = st.button("✅ Submit Data")
     
     with btn_col2:
         refresh_button = st.button("🔄 Refresh Data")
+    
+    with btn_col3:
+        clear_button = st.button("🗑️ Clear Data")
+    
+    # Clear data confirmation
+    if clear_button:
+        # Create a password input for confirmation
+        clear_password = st.text_input("🔐 Enter password to clear data:", type="password", key="clear_password")
+        
+        if clear_password:
+            if clear_password == "wipe":
+                # Clear only request data
+                request_data = pd.DataFrame(columns=["Completed", "Agent Name", "TYPE", "ID", "COMMENT", "Timestamp"])
+                request_data.to_csv(REQUEST_FILE, index=False)
+                st.success("✅ Request data has been cleared successfully!")
+            else:
+                st.error("❌ Incorrect password. Data was not cleared.")
     
     if submit_button:
         if not agent_name_input or not id_input or not comment_input:
@@ -155,12 +183,36 @@ if section == "🖼️ HOLD":
     uploaded_image = st.file_uploader("📤 Upload Image", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
     
     if uploaded_image:
-        image = Image.open(uploaded_image)
-        st.image(image, caption="📸 Uploaded Image", use_column_width=True)
+        try:
+            # Open the image
+            image = Image.open(uploaded_image)
+            
+            # Convert image to RGB mode if it's not already
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            # Ensure the directory exists
+            os.makedirs(os.path.dirname(LATEST_IMAGE_PATH), exist_ok=True)
+            
+            # Save the image with explicit write permissions
+            image.save(LATEST_IMAGE_PATH, quality=85)
+            
+            # Display the uploaded image
+            st.image(image, caption="📸 Uploaded Image", use_container_width=True)
+            st.success("✅ Image uploaded successfully!")
+        
+        except Exception as e:
+            st.error(f"❌ Error uploading image: {str(e)}")
 
     if st.button("🔍 CHECK HOLD"):
-        if uploaded_image:
-            st.image(image, caption="📸 Latest Uploaded Image", use_column_width=True)
+        # Check if the latest image exists
+        if os.path.exists(LATEST_IMAGE_PATH):
+            try:
+                # Open and display the latest image
+                latest_image = Image.open(LATEST_IMAGE_PATH)
+                st.image(latest_image, caption="📸 Latest Uploaded Image", use_container_width=True)
+            except Exception as e:
+                st.error(f"❌ Error displaying image: {str(e)}")
         else:
             st.write("❌ No image uploaded.")
 
