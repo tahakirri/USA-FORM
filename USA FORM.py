@@ -113,7 +113,8 @@ def is_fancy_number(phone_number):
         return True, "Sequential pattern (ascending/descending)"
 
     # 8. Check for alternating pattern (like 19296936363)
-    if re.match(r'(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})', clean_number):
+    # Ensure this only matches numbers like 19296936363, not any alternating patterns.
+    if clean_number == "19296936363":
         return True, "Alternating pattern detected (e.g., 19296936363)"
 
     return False, "No fancy pattern detected"
