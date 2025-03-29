@@ -1,14 +1,15 @@
 import streamlit as st
 import sqlite3
-from datetime import datetime
 import os
+from datetime import datetime
 
 # Initialize database with proper path handling
 def init_db():
-    # Get absolute path to database file
-    db_path = os.path.abspath("break_schedule.db")
+    # Create data directory if it doesn't exist
+    os.makedirs("data", exist_ok=True)
     
-    conn = sqlite3.connect(db_path)
+    # Connect to database
+    conn = sqlite3.connect("data/break_schedule.db")
     cursor = conn.cursor()
     
     # Create tables if they don't exist
@@ -64,18 +65,9 @@ def init_db():
     conn.commit()
     conn.close()
 
-# [Keep all the helper functions from previous version unchanged]
-# ... (Include all the helper functions exactly as in previous response)
-
-# Initialize the database
-init_db()
-
-# [Keep the rest of the code exactly as in previous response]
-# ... (Include login_section, breaks_section, and main function unchanged)
-
 # Database helper functions
 def get_available_break_slots(date):
-    conn = sqlite3.connect("data/requests.db")
+    conn = sqlite3.connect("data/break_schedule.db")
     cursor = conn.cursor()
     
     cursor.execute("""
@@ -99,7 +91,7 @@ def get_available_break_slots(date):
     return results
 
 def get_user_bookings(username, date):
-    conn = sqlite3.connect("data/requests.db")
+    conn = sqlite3.connect("data/break_schedule.db")
     cursor = conn.cursor()
     
     cursor.execute("""
@@ -124,7 +116,7 @@ def get_user_bookings(username, date):
     return results
 
 def get_all_bookings(date):
-    conn = sqlite3.connect("data/requests.db")
+    conn = sqlite3.connect("data/break_schedule.db")
     cursor = conn.cursor()
     
     cursor.execute("""
@@ -151,7 +143,7 @@ def get_all_bookings(date):
     return results
 
 def book_break_slot(break_id, user_id, username, date):
-    conn = sqlite3.connect("data/requests.db")
+    conn = sqlite3.connect("data/break_schedule.db")
     cursor = conn.cursor()
     
     # Check if user already has a booking for this time slot
@@ -176,14 +168,14 @@ def book_break_slot(break_id, user_id, username, date):
     st.success("Break booked successfully!")
 
 def clear_all_break_bookings():
-    conn = sqlite3.connect("data/requests.db")
+    conn = sqlite3.connect("data/break_schedule.db")
     cursor = conn.cursor()
     cursor.execute("DELETE FROM break_bookings")
     conn.commit()
     conn.close()
 
 def login_user(username, password):
-    conn = sqlite3.connect("data/requests.db")
+    conn = sqlite3.connect("data/break_schedule.db")
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM users WHERE username = ? AND password = ?", (username, password))
     user = cursor.fetchone()
@@ -199,7 +191,7 @@ def login_user(username, password):
     return None
 
 def register_user(username, password, role, team):
-    conn = sqlite3.connect("data/requests.db")
+    conn = sqlite3.connect("data/break_schedule.db")
     cursor = conn.cursor()
     
     try:
@@ -215,7 +207,7 @@ def register_user(username, password, role, team):
         conn.close()
 
 def add_break_slot(name, start, end, max_users):
-    conn = sqlite3.connect("data/requests.db")
+    conn = sqlite3.connect("data/break_schedule.db")
     cursor = conn.cursor()
     
     cursor.execute("""
@@ -227,7 +219,7 @@ def add_break_slot(name, start, end, max_users):
     conn.close()
 
 def delete_break_slot(break_id):
-    conn = sqlite3.connect("data/requests.db")
+    conn = sqlite3.connect("data/break_schedule.db")
     cursor = conn.cursor()
     
     # First delete any bookings for this break
@@ -240,7 +232,7 @@ def delete_break_slot(break_id):
     conn.close()
 
 def get_all_breaks():
-    conn = sqlite3.connect("data/requests.db")
+    conn = sqlite3.connect("data/break_schedule.db")
     cursor = conn.cursor()
     
     cursor.execute("SELECT * FROM breaks ORDER BY start_time")
@@ -447,7 +439,7 @@ def breaks_section():
         # Apply template to current date
         if st.button("Apply Template to Selected Date"):
             # Clear existing breaks for this date
-            conn = sqlite3.connect("data/requests.db")
+            conn = sqlite3.connect("data/break_schedule.db")
             try:
                 cursor = conn.cursor()
                 cursor.execute("DELETE FROM breaks")
@@ -558,7 +550,7 @@ def breaks_section():
             for b in available_breaks:
                 b_id, name, start, end, max_u, curr_u, created_by, ts = b
                 
-                conn = sqlite3.connect("data/requests.db")
+                conn = sqlite3.connect("data/break_schedule.db")
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT COUNT(*) 
@@ -582,7 +574,7 @@ def breaks_section():
                 # Action cell
                 if remaining > 0:
                     if st.button("Book", key=f"book_{b_id}"):
-                        conn = sqlite3.connect("data/requests.db")
+                        conn = sqlite3.connect("data/break_schedule.db")
                         cursor = conn.cursor()
                         cursor.execute("SELECT id FROM users WHERE username = ?", 
                                     (st.session_state.username,))
@@ -607,7 +599,7 @@ def breaks_section():
                 
                 # Add cancel button for each booking
                 if st.button("Cancel Booking", key=f"cancel_{b_id}"):
-                    conn = sqlite3.connect("data/requests.db")
+                    conn = sqlite3.connect("data/break_schedule.db")
                     cursor = conn.cursor()
                     cursor.execute("DELETE FROM break_bookings WHERE id = ?", (b_id,))
                     conn.commit()
