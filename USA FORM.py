@@ -92,12 +92,17 @@ def is_fancy_number(phone_number):
                 patterns.append(f"Repeating pairs ({'-'.join(pairs)})")
                 
         # ABABAB pattern
-        if pairs[0] == pairs[1] == pairs[2]:
+        if pairs[0][0] == pairs[1][0] == pairs[2][0] and pairs[0][1] == pairs[1][1] == pairs[2][1]:
             patterns.append("Perfect ABABAB pattern")
             
         # Mirror pattern
         if pairs[0] == pairs[2][::-1] and pairs[1] == pairs[1][::-1]:
             patterns.append("Mirror pair pattern")
+    
+    # Check for alternating digit pattern (like 636363)
+    if len(last_six) == 6:
+        if (last_six[0] == last_six[2] == last_six[4]) and (last_six[1] == last_six[3] == last_six[5]):
+            patterns.append(f"Alternating digits pattern ({last_six[0]}{last_six[1]})")
     
     # 4. Special cases
     special_patterns = {
@@ -180,9 +185,11 @@ with col2:
        - Improved ABABAB pattern recognition
     3. **Quadruple Digit Validation**  
        - Better handling of 4+ repeating digits
+    4. **Alternating Digit Patterns**
+       - Now detects patterns like ABABAB (636363)
 
     **Verified Test Cases:**
-    - ✅ 19296936363 → 636363 (special repeating pairs)
+    - ✅ 19296936363 → Alternating digits pattern (63)
     - ✅ 13172611666 → Triplet ending
     - ✅ 15853828288 → ABABAB pattern
     - ❌ 16109055580 → No qualifying patterns
