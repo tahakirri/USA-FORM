@@ -1,10 +1,13 @@
 import streamlit as st
 import sqlite3
+import os
 from datetime import datetime
-import pandas as pd
 
 # Initialize database
 def init_db():
+    # Create data directory if it doesn't exist
+    os.makedirs("data", exist_ok=True)
+    
     conn = sqlite3.connect("data/requests.db")
     cursor = conn.cursor()
     
@@ -44,13 +47,19 @@ def init_db():
     )
     """)
     
-    # Create admin user if not exists
-    cursor.execute("SELECT * FROM users WHERE username = 'admin'")
-    if not cursor.fetchone():
-        cursor.execute(
-            "INSERT INTO users (username, password, role, team) VALUES (?, ?, ?, ?)",
-            ("admin", "admin123", "admin", "Management")
-        )
+    # Create admin users if they don't exist
+    admin_users = [
+        ("admin", "admin123", "admin", "Management"),
+        ("taha_kirri", "taha123", "admin", "Management")
+    ]
+    
+    for username, password, role, team in admin_users:
+        cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+        if not cursor.fetchone():
+            cursor.execute(
+                "INSERT INTO users (username, password, role, team) VALUES (?, ?, ?, ?)",
+                (username, password, role, team)
+            )
     
     conn.commit()
     conn.close()
@@ -195,6 +204,40 @@ def register_user(username, password, role, team):
         return False
     finally:
         conn.close()
+
+def add_break_slot(name, start, end, max_users):
+    conn = sqlite3.connect("data/requests.db")
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+    INSERT INTO breaks (break_name, start_time, end_time, max_users, created_by, timestamp)
+    VALUES (?, ?, ?, ?, ?, ?)
+    """, (name, start, end, max_users, st.session_state.username, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    
+    conn.commit()
+    conn.close()
+
+def delete_break_slot(break_id):
+    conn = sqlite3.connect("data/requests.db")
+    cursor = conn.cursor()
+    
+    # First delete any bookings for this break
+    cursor.execute("DELETE FROM break_bookings WHERE break_id = ?", (break_id,))
+    
+    # Then delete the break itself
+    cursor.execute("DELETE FROM breaks WHERE id = ?", (break_id,))
+    
+    conn.commit()
+    conn.close()
+
+def get_all_breaks():
+    conn = sqlite3.connect("data/requests.db")
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM breaks ORDER BY start_time")
+    results = cursor.fetchall()
+    conn.close()
+    return results
 
 # Initialize the database
 init_db()
@@ -392,17 +435,6 @@ def breaks_section():
             
         st.markdown('</div>', unsafe_allow_html=True)
         
-        # Save/load template functionality
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("💾 Save as New Template"):
-                pass  # Would implement save functionality here
-        with col2:
-            if st.button("🗑️ Delete Template"):
-                pass  # Would implement delete functionality here
-        
-        st.markdown("---")
-        
         # Apply template to current date
         if st.button("Apply Template to Selected Date"):
             # Clear existing breaks for this date
@@ -429,6 +461,49 @@ def breaks_section():
                 st.success("Template applied successfully!")
             finally:
                 conn.close()
+        
+        st.markdown("---")
+        
+        # Manual break management
+        st.subheader("Manual Break Management")
+        
+        with st.form("add_break_form"):
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                break_name = st.text_input("Break Name", "TEABREAK")
+            with col2:
+                start_time = st.text_input("Start Time (HH:MM)", "16:00")
+            with col3:
+                end_time = st.text_input("End Time (HH:MM)", "16:15")
+            with col4:
+                max_users = st.number_input("Max Users", min_value=1, value=5)
+            
+            if st.form_submit_button("Add Break Slot"):
+                add_break_slot(break_name, start_time, end_time, max_users)
+                st.rerun()
+        
+        st.markdown("### Current Break Slots")
+        current_breaks = get_all_breaks()
+        
+        if current_breaks:
+            for b in current_breaks:
+                b_id, name, start, end, max_u, created_by, ts = b
+                
+                col1, col2, col3, col4, col5 = st.columns([2,2,2,2,1])
+                with col1:
+                    st.text_input("Name", value=name, key=f"name_{b_id}")
+                with col2:
+                    st.text_input("Start", value=start, key=f"start_{b_id}")
+                with col3:
+                    st.text_input("End", value=end, key=f"end_{b_id}")
+                with col4:
+                    st.number_input("Max Users", min_value=1, value=max_u, key=f"max_{b_id}")
+                with col5:
+                    if st.button("🗑️", key=f"delete_{b_id}"):
+                        delete_break_slot(b_id)
+                        st.rerun()
+        else:
+            st.info("No break slots currently defined")
         
         st.markdown("---")
         
