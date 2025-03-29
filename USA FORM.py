@@ -27,51 +27,69 @@ def is_fancy_number(phone_number):
     elif len(clean_number) != 10:
         return False, "Invalid length (must be 10 digits or 11 digits starting with 1)"
 
-    # 1. Check for repeating last 6 digits (456456 or 587587 pattern)
-    if len(clean_number) >= 6:
-        last_six = clean_number[-6:]
-        if len(last_six) == 6 and last_six[:3] == last_six[3:]:
-            return True, f"Repeating last 6 digits ({last_six[:3]} {last_six[3:]})"
+    # 1. Check exceptional cases from image
+    exceptional_cases = [
+        '7900000123', '7900007555', 
+        '7898789555', '7999004455'
+    ]
+    for case in exceptional_cases:
+        if case in clean_number:
+            return True, "Exceptional case match"
 
-    # 2. Check for 4+ repeating digits
-    if re.search(r'(\d)\1{3,}', clean_number):
-        return True, f"4+ repeating digits ({re.search(r'(\d)\1{3,}', clean_number).group()})"
-
-    # 3. Check 6-digit sequences from the image
+    # 2. Check 6-digit sequences from image
     six_digit_patterns = [
-        '123456', '234567', '345678', '456789', '567890',
-        '987654', '876543', '765432', '654321', '543210',
-        '121212', '123123', '456456', '789789', '111222'
+        '121456', '987654', '666666', '100001'
     ]
     for pattern in six_digit_patterns:
         if pattern in clean_number:
             return True, f"6-digit sequence ({pattern})"
 
-    # 4. Check 3-digit sequences from the image
-    three_digit_groups = [
-        ('444', '555'), ('121', '122'), ('786', '786'), 
-        ('457', '456'), ('111', '222'), ('333', '444')
+    # 3. Check 3-digit pairs from image
+    three_digit_pairs = [
+        ('441', '555'), ('121', '126'), 
+        ('786', '786'), ('457', '456')
     ]
     for i in range(len(clean_number)-5):
         chunk = clean_number[i:i+6]
-        for group in three_digit_groups:
-            if chunk[:3] == group[0] and chunk[3:] == group[1]:
-                return True, f"3-digit sequence ({group[0]} {group[1]})"
+        for pair in three_digit_pairs:
+            if chunk[:3] == pair[0] and chunk[3:] == pair[1]:
+                return True, f"3-digit pair ({pair[0]} {pair[1]})"
 
-    # 5. Exceptional cases
-    exceptional_cases = [
-        '7900000123', '7900007555', '7898789555', '7999004455',
-        '77777370', '00000123', '99999456'
+    # 4. Check 2-digit sequences from image
+    two_digit_groups = [
+        ('11', '12', '13'), ('20', '20', '20'),
+        ('01', '01', '01'), ('32', '42', '52')
     ]
-    for case in exceptional_cases:
-        if case in clean_number:
-            return True, "Exceptional case pattern"
+    for i in range(len(clean_number)-5):
+        chunk = clean_number[i:i+6]
+        for group in two_digit_groups:
+            if (chunk[:2] == group[0] and 
+                chunk[2:4] == group[1] and 
+                chunk[4:6] == group[2]):
+                return True, f"2-digit sequence ({' '.join(group)})"
+
+    # 5. Check for 5+ repeating digits
+    if re.search(r'(\d)\1{4,}', clean_number):
+        return True, "5+ repeating digits"
+
+    # 6. Check for repeating last 6 digits (ABCABC pattern)
+    if len(clean_number) >= 6:
+        last_six = clean_number[-6:]
+        if last_six[:3] == last_six[3:]:
+            return True, f"Repeating 3-digit ending ({last_six[:3]} {last_six[3:]})"
+
+    # 7. Check for mirror pattern
+    if len(clean_number) == 10:
+        first_half = clean_number[:5]
+        second_half = clean_number[5:]
+        if first_half == second_half[::-1]:
+            return True, "Mirror pattern"
 
     return False, "No fancy pattern detected"
 
 # User Interface
 phone_input = st.text_input("📱 Enter Phone Number (10 or 11 digits)", 
-                          placeholder="e.g., 18147900900 or 13472458458")
+                          placeholder="e.g., 16788999999 or 13172611666")
 
 if st.button("🔍 Check if Fancy") and phone_input:
     is_fancy, pattern = is_fancy_number(phone_input)
@@ -98,3 +116,4 @@ if st.button("🔍 Check if Fancy") and phone_input:
             <p><strong>Analysis:</strong> {pattern}</p>
         </div>
         """, unsafe_allow_html=True)
+        
