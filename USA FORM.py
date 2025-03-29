@@ -1,340 +1,734 @@
 import streamlit as st
-import re
+import sqlite3
+import os
+from datetime import datetime
 
-# Custom CSS for dark mode and enhanced styling
-st.set_page_config(
-    page_title="Fancy Number Checker", 
-    page_icon="🔢", 
-    layout="wide", 
-    initial_sidebar_state="expanded"
-)
-
-st.markdown("""
-<style>
-    .stApp {
-        background-color: #0e1117;
-        color: #ffffff;
-    }
-    [data-testid="stSidebar"] {
-        background-color: #1e2129;
-    }
-    h1, h2, h3, h4 {
-        color: #4db8ff;
-    }
-    .stTextInput > div > div > input {
-        background-color: #2c2f36;
-        color: #ffffff;
-        border: 1px solid #4a4e57;
-    }
-    .stButton > button {
-        background-color: #4db8ff;
-        color: #ffffff;
-        border: none;
-        transition: background-color 0.3s ease;
-    }
-    .stButton > button:hover {
-        background-color: #3aa0ff;
-    }
-    .fancy-number { color: #00ff00; font-weight: bold; }
-    .normal-number { color: #ffffff; }
-    .result-box { padding: 15px; border-radius: 5px; margin: 10px 0; }
-    .fancy-result { background-color: #1e3d1e; border: 1px solid #00ff00; }
-    .normal-result { background-color: #3d1e1e; border: 1px solid #ff0000; }
-</style>
-""", unsafe_allow_html=True)
-
-def is_fancy_number(phone_number):
-    clean_number = re.sub(r'[^\d]', '', phone_number)
+# Initialize database with proper path handling
+def init_db():
+    # Create data directory if it doesn't exist
+    os.makedirs("data", exist_ok=True)
     
-    # Length validation
-    if len(clean_number) == 11 and clean_number.startswith('1'):
-        clean_number = clean_number[1:]  # Remove country code for analysis
-    elif len(clean_number) != 10:
-        return False, "Invalid length"
+    # Connect to database
+    conn = sqlite3.connect("data/break_schedule.db")
+    cursor = conn.cursor()
     
-    # Store all patterns found
-    patterns_found = []
-    
-    # 1. Check for 6-digit repeating pattern (e.g., 900900)
-    if len(clean_number) >= 6:
-        for i in range(len(clean_number) - 5):
-            if clean_number[i:i+3] == clean_number[i+3:i+6]:
-                patterns_found.append(f"Repeating 3-digit pattern ({clean_number[i:i+3]}-{clean_number[i+3:i+6]})")
-    
-    # 2. Check for triplets (e.g., 111, 222, 333)
-    triplet_matches = re.finditer(r'(\d)\1{2}', clean_number)
-    for match in triplet_matches:
-        patterns_found.append(f"Triplet pattern ({match.group()})")
-    
-    # 3. Check for 6-digit sequences from examples
-    six_digit_patterns = {
-        '123456': "Ascending sequence (123456)",
-        '987654': "Descending sequence (987654)",
-        '666666': "Repeated digit sequence (666666)",
-        '100001': "Special pattern (100001)"
-    }
-    for pattern, desc in six_digit_patterns.items():
-        if pattern in clean_number:
-            patterns_found.append(desc)
-    
-    # 4. Check for 3-digit pairs from examples
-    three_digit_pairs = [
-        ('444', '555'), ('121', '122'), 
-        ('786', '786'), ('457', '456')
-    ]
-    for i in range(len(clean_number) - 5):
-        chunk = clean_number[i:i+6]
-        for pair in three_digit_pairs:
-            if chunk[:3] == pair[0] and chunk[3:] == pair[1]:
-                patterns_found.append(f"3-digit pair pattern ({pair[0]}-{pair[1]})")
-    
-    # 5. Check for 2-digit sequences from examples
-    two_digit_patterns = [
-        ('11', '12', '13'), ('20', '20', '20'),
-        ('32', '42', '52'), ('01', '01', '01')
-    ]
-    for pattern in two_digit_patterns:
-        if len(pattern) == 3:  # For 3 consecutive 2-digit groups
-            for i in range(len(clean_number) - 5):
-                chunk = clean_number[i:i+6]
-                if chunk[:2] == pattern[0] and chunk[2:4] == pattern[1] and chunk[4:6] == pattern[2]:
-                    patterns_found.append(f"2-digit sequence ({pattern[0]}-{pattern[1]}-{pattern[2]})")
-    
-    # 6. Check for exceptional cases
-    exceptional_cases = {
-        '7900000123': "Special pattern with quad zeros (7900000123)",
-        '7900007555': "Special pattern with triple 5s (7900007555)",
-        '7898789555': "Special rhythmic pattern (7898789555)",
-        '7999004455': "Double-double pattern (7999004455)"
-    }
-    for pattern, desc in exceptional_cases.items():
-        if pattern in clean_number:
-            patterns_found.append(desc)
-    
-    # 7. Check for quad patterns (4 identical digits in a row)
-    quad_matches = re.finditer(r'(\d)\1{3}', clean_number)
-    for match in quad_matches:
-        patterns_found.append(f"Quad pattern ({match.group()})")
-    
-    # 8. Check for double-doubles (e.g., 1122, 5566)
-    double_double_matches = re.finditer(r'(\d)\1(\d)\2', clean_number)
-    for match in double_double_matches:
-        patterns_found.append(f"Double-double pattern ({match.group()})")
-    
-    # 9. Check for ascending/descending sequences of at least 4 digits
-    for i in range(len(clean_number) - 3):
-        chunk = clean_number[i:i+4]
-        # Check ascending (e.g., 1234, 5678)
-        if all(int(chunk[j]) == int(chunk[j-1]) + 1 for j in range(1, 4)):
-            patterns_found.append(f"Ascending sequence ({chunk})")
-        # Check descending (e.g., 9876, 5432)
-        if all(int(chunk[j]) == int(chunk[j-1]) - 1 for j in range(1, 4)):
-            patterns_found.append(f"Descending sequence ({chunk})")
-    
-    # 10. Check for repeated 2-digit patterns in the last 6+ digits
-    last_six = clean_number[-6:]
-    last_eight = clean_number[-8:] if len(clean_number) >= 8 else ""
-    
-    # Check for patterns like 828288 (in 15853828288)
-    two_digit_repeat_match = re.search(r'(\d\d)\1+', last_six)
-    if two_digit_repeat_match:
-        patterns_found.append(f"Repeating 2-digit pattern ({two_digit_repeat_match.group()})")
-    
-    # 11. Check for alternating digit patterns (like 5853828288, 9296936363)
-    # Last 6 digits check for alternating patterns
-    if re.search(r'(\d\d)(\d\d)(\1|\2)+', last_six):
-        patterns_found.append(f"Alternating pattern in last digits ({last_six})")
-    
-    # 12. Check for patterns like 03030 (in 15015303030)
-    if len(last_six) >= 5:
-        pattern_match = re.search(r'(\d\d)\1+\d?', last_six)
-        if pattern_match:
-            patterns_found.append(f"Repeating digit pair pattern ({pattern_match.group()})")
-    
-    # 13. Check for patterns where the same 2 digits repeat 3 or more times
-    for i in range(10):
-        for j in range(10):
-            pattern = f"{i}{j}" * 3  # e.g., "030303" or "121212"
-            if pattern in clean_number:
-                patterns_found.append(f"Repeating digit pair ({i}{j}) pattern")
-    
-    # 14. Check for 3-digit pairs that alternate or repeat - IMPROVED THIS SECTION
-    if len(last_eight) >= 6:
-        for i in range(len(last_eight) - 5):
-            first_three = last_eight[i:i+3]
-            second_three = last_eight[i+3:i+6]
-            # Look for repeated patterns or 3-digit blocks that are related
-            if first_three == second_three:
-                patterns_found.append(f"Repeating 3-digit blocks ({first_three})")
-            # Check if first two digits in both blocks match (only if at least 2 digits match)
-            elif first_three[:2] == second_three[:2] and first_three[0] != first_three[1]:
-                patterns_found.append(f"Pattern with repeating prefix ({first_three[:2]})")
-            # Check if last two digits in both blocks match (only if at least 2 digits match)
-            elif first_three[1:] == second_three[1:] and first_three[1] != first_three[2]:
-                patterns_found.append(f"Pattern with repeating suffix ({first_three[1:]})")
-    
-    # 15. Check the last 4-5 digits for repeating patterns like XYXY
-    last_five = clean_number[-5:]
-    last_four = clean_number[-4:]
-    
-    # Check for XYXY pattern in last 4 digits (e.g., 3636)
-    if len(last_four) == 4 and last_four[0:2] == last_four[2:4]:
-        patterns_found.append(f"XYXY pattern in last 4 digits ({last_four})")
-    
-    # Check for repeated digits in the last 5 digits (e.g., 30303)
-    if len(last_five) == 5:
-        if last_five[0:2] == last_five[2:4] or last_five[1:3] == last_five[3:5]:
-            patterns_found.append(f"Repeating pattern in last 5 digits ({last_five})")
-    
-    # 16. Check for consecutive pairs of repeated digits (e.g., 088077)
-    for i in range(len(clean_number) - 5):
-        chunk = clean_number[i:i+6]
-        if (chunk[0] == chunk[1] and 
-            chunk[2] == chunk[3] and 
-            chunk[4] == chunk[5] and
-            (chunk[0] != chunk[2] or chunk[2] != chunk[4])):
-            patterns_found.append(f"Consecutive paired digits ({chunk})")
-    
-    # 17. Check for patterns like 088077 with double zeros followed by double digits
-    double_zero_patterns = re.finditer(r'0{2,}(\d)\1(\d)\2', clean_number)
-    for match in double_zero_patterns:
-        patterns_found.append(f"Double zeros followed by double digits ({match.group()})")
-    
-    # 18. Check for any sequence with consecutive pairs (like in 9088077)
-    last_six = clean_number[-6:]
-    if (re.search(r'(\d)\1(\d)\2(\d)\3', last_six) or
-        re.search(r'(\d)(\d)(\1)(\2)', last_six) or
-        re.search(r'(\d)(\d)(\d)(\1)(\2)(\3)', last_six)):
-        patterns_found.append(f"Sequential paired digits pattern ({last_six})")
-    
-    # 19. Check for patterns with consecutive identical digits in specific positions
-    for i in range(len(clean_number) - 5):
-        segment = clean_number[i:i+6]
-        # Check for consecutive pairs at positions 0-1, 2-3, 4-5
-        if (segment[0] == segment[1] and 
-            segment[2] == segment[3] and 
-            segment[4] == segment[5]):
-            patterns_found.append(f"Three consecutive pairs ({segment})")
-    
-    # 20. Explicitly check for the 088077 pattern and similar
-    if '088077' in clean_number:
-        patterns_found.append("Special pattern with double zeros and double digits (088077)")
-    
-    # Check for similar patterns with different digits
-    for a in range(10):
-        for b in range(10):
-            for c in range(10):
-                pattern = f"{a}{a}{b}{b}{c}{c}"
-                if pattern in clean_number and not (a == b and b == c):  # Avoid 111111 pattern
-                    patterns_found.append(f"Triple double-digit pattern ({pattern})")
-    
-    # Filter out weak patterns that shouldn't count as fancy
-    strong_patterns = []
-    for pattern in patterns_found:
-        # Exclude "repeating suffix" patterns that are too short or not significant enough
-        if "repeating suffix" in pattern.lower():
-            # Only count if it's a significant pattern (like last 4 digits matching)
-            if len(pattern.split("(")[-1].replace(")", "")) >= 4:
-                strong_patterns.append(pattern)
-        else:
-            strong_patterns.append(pattern)
-    
-    # Return result based on strong patterns only
-    if strong_patterns:
-        return True, ", ".join(strong_patterns)
-    else:
-        return False, "No fancy pattern detected"
-
-# Streamlit UI
-st.header("🔢 Fancy Number Checker")
-st.subheader("Check if your phone number has a fancy pattern")
-
-phone_input = st.text_input("📱 Enter Phone Number (10/11 digits)", 
-                          placeholder="e.g., 18147900900 or 17029088077")
-
-col1, col2 = st.columns([1, 2])
-with col1:
-    if st.button("🔍 Check Number"):
-        if not phone_input:
-            st.warning("Please enter a phone number")
-        else:
-            is_fancy, pattern = is_fancy_number(phone_input)
-            clean_number = re.sub(r'[^\d]', '', phone_input)
-            
-            # Format display
-            if len(clean_number) == 10:
-                formatted_num = f"{clean_number[:3]}-{clean_number[3:6]}-{clean_number[6:]}"
-            elif len(clean_number) == 11 and clean_number.startswith('1'):
-                formatted_num = f"1-{clean_number[1:4]}-{clean_number[4:7]}-{clean_number[7:]}"
-            else:
-                formatted_num = clean_number
-
-            if is_fancy:
-                st.markdown(f"""
-                <div class="result-box fancy-result">
-                    <h3><span class="fancy-number">✨ {formatted_num} ✨</span></h3>
-                    <p>FANCY NUMBER DETECTED!</p>
-                    <p><strong>Pattern:</strong> {pattern}</p>
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.markdown(f"""
-                <div class="result-box normal-result">
-                    <h3><span class="normal-number">{formatted_num}</span></h3>
-                    <p>Normal phone number</p>
-                    <p><strong>Reason:</strong> {pattern}</p>
-                </div>
-                """, unsafe_allow_html=True)
-
-with col2:
-    st.markdown("""
-    ### Fancy Number Patterns
-    
-    #### 6-digit sequence fancy numbers:
-    - 123456 (Ascending sequence)
-    - 987654 (Descending sequence)
-    - 666666 (Repeated digits)
-    - 100001 (Special pattern)
-    
-    #### 3-digit sequence fancy numbers:
-    - 444-555 (Paired sequences)
-    - 121-122 (Paired sequences)
-    - 786-786 (Repeated sequence)
-    - 457-456 (Paired sequences)
-    
-    #### 2-digit sequence fancy numbers:
-    - 11-12-13 (Sequential pairs)
-    - 20-20-20 (Repeated pairs)
-    - 32-42-52 (Pattern pairs)
-    - 01-01-01 (Repeated pairs)
-    
-    #### Advanced patterns:
-    - Repeating 2-digit patterns (828288)
-    - Alternating digits (9296936363)
-    - Repeating pairs with final digit (303030)
-    - XYXY patterns in last digits (3636)
-    - Consecutive paired digits (088077)
-    - Triple double-digit pattern (aabbcc)
-    
-    #### Exceptional cases:
-    - 7900000123 (Contains quad zeros)
-    - 7900007555 (Special pattern with triple 5s)
-    - 7898789555 (Rhythmic pattern)
-    - 7999004455 (Double-double pattern)
+    # Create tables if they don't exist
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE,
+        password TEXT,
+        role TEXT,
+        team TEXT
+    )
     """)
-
-# Optional: Debug testing for specific numbers
-debug_mode = False
-if debug_mode:
-    test_numbers = [
-        "12408692892",  # Should NOT be fancy
-        "15853828288",
-        "19296936363",
-        "15015303030",
-        "17029088077"
+    
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS breaks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        break_name TEXT,
+        start_time TEXT,
+        end_time TEXT,
+        max_users INTEGER,
+        created_by TEXT,
+        timestamp TEXT
+    )
+    """)
+    
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS break_bookings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        break_id INTEGER,
+        user_id INTEGER,
+        username TEXT,
+        booking_date TEXT,
+        timestamp TEXT,
+        FOREIGN KEY(break_id) REFERENCES breaks(id),
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    )
+    """)
+    
+    # Create default users if they don't exist
+    default_users = [
+        ("admin", "admin123", "admin", "Management"),
+        ("taha_kirri", "taha123", "admin", "Management"),
+        ("agent1", "agent123", "agent", "Team A"),
+        ("agent2", "agent123", "agent", "Team B")
     ]
     
-    st.markdown("### Debug Testing")
-    for number in test_numbers:
-        is_fancy, pattern = is_fancy_number(number)
-        st.write(f"Number: {number} - Fancy: {is_fancy} - Pattern: {pattern}")
+    for username, password, role, team in default_users:
+        cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+        if not cursor.fetchone():
+            cursor.execute(
+                "INSERT INTO users (username, password, role, team) VALUES (?, ?, ?, ?)",
+                (username, password, role, team)
+            )
+    
+    conn.commit()
+    conn.close()
+
+# Database helper functions
+def get_available_break_slots(date):
+    conn = sqlite3.connect("data/break_schedule.db")
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+    SELECT 
+        b.id, 
+        b.break_name, 
+        b.start_time, 
+        b.end_time, 
+        b.max_users,
+        COUNT(bb.id) as current_users,
+        b.created_by,
+        b.timestamp
+    FROM breaks b
+    LEFT JOIN break_bookings bb ON b.id = bb.break_id AND bb.booking_date = ?
+    GROUP BY b.id
+    ORDER BY b.start_time
+    """, (date,))
+    
+    results = cursor.fetchall()
+    conn.close()
+    return results
+
+def get_user_bookings(username, date):
+    conn = sqlite3.connect("data/break_schedule.db")
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+    SELECT 
+        bb.id,
+        bb.break_id,
+        bb.user_id,
+        bb.username,
+        bb.booking_date,
+        bb.timestamp,
+        b.break_name,
+        b.start_time,
+        b.end_time
+    FROM break_bookings bb
+    JOIN breaks b ON bb.break_id = b.id
+    WHERE bb.username = ? AND bb.booking_date = ?
+    ORDER BY b.start_time
+    """, (username, date))
+    
+    results = cursor.fetchall()
+    conn.close()
+    return results
+
+def get_all_bookings(date):
+    conn = sqlite3.connect("data/break_schedule.db")
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+    SELECT 
+        bb.id,
+        bb.break_id,
+        bb.user_id,
+        bb.username,
+        bb.booking_date,
+        bb.timestamp,
+        b.break_name,
+        b.start_time,
+        b.end_time,
+        u.role
+    FROM break_bookings bb
+    JOIN breaks b ON bb.break_id = b.id
+    JOIN users u ON bb.user_id = u.id
+    WHERE bb.booking_date = ?
+    ORDER BY b.start_time
+    """, (date,))
+    
+    results = cursor.fetchall()
+    conn.close()
+    return results
+
+def book_break_slot(break_id, user_id, username, date):
+    conn = sqlite3.connect("data/break_schedule.db")
+    cursor = conn.cursor()
+    
+    # Check if user already has a booking for this time slot
+    cursor.execute("""
+    SELECT bb.id 
+    FROM break_bookings bb
+    JOIN breaks b ON bb.break_id = b.id
+    WHERE bb.user_id = ? AND bb.booking_date = ? AND bb.break_id = ?
+    """, (user_id, date, break_id))
+    
+    if cursor.fetchone():
+        st.error("You already have a booking for this time slot!")
+        return
+    
+    cursor.execute("""
+    INSERT INTO break_bookings (break_id, user_id, username, booking_date, timestamp)
+    VALUES (?, ?, ?, ?, ?)
+    """, (break_id, user_id, username, date, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    
+    conn.commit()
+    conn.close()
+    st.success("Break booked successfully!")
+
+def clear_all_break_bookings():
+    conn = sqlite3.connect("data/break_schedule.db")
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM break_bookings")
+    conn.commit()
+    conn.close()
+
+def login_user(username, password):
+    conn = sqlite3.connect("data/break_schedule.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE username = ? AND password = ?", (username, password))
+    user = cursor.fetchone()
+    conn.close()
+    
+    if user:
+        return {
+            "id": user[0],
+            "username": user[1],
+            "role": user[3],
+            "team": user[4]
+        }
+    return None
+
+def register_user(username, password, role, team):
+    conn = sqlite3.connect("data/break_schedule.db")
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute(
+            "INSERT INTO users (username, password, role, team) VALUES (?, ?, ?, ?)",
+            (username, password, role, team)
+        )
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    finally:
+        conn.close()
+
+def add_break_slot(name, start, end, max_users):
+    conn = sqlite3.connect("data/break_schedule.db")
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+    INSERT INTO breaks (break_name, start_time, end_time, max_users, created_by, timestamp)
+    VALUES (?, ?, ?, ?, ?, ?)
+    """, (name, start, end, max_users, st.session_state.username, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    
+    conn.commit()
+    conn.close()
+
+def delete_break_slot(break_id):
+    conn = sqlite3.connect("data/break_schedule.db")
+    cursor = conn.cursor()
+    
+    # First delete any bookings for this break
+    cursor.execute("DELETE FROM break_bookings WHERE break_id = ?", (break_id,))
+    
+    # Then delete the break itself
+    cursor.execute("DELETE FROM breaks WHERE id = ?", (break_id,))
+    
+    conn.commit()
+    conn.close()
+
+def get_all_breaks():
+    conn = sqlite3.connect("data/break_schedule.db")
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM breaks ORDER BY start_time")
+    results = cursor.fetchall()
+    conn.close()
+    return results
+
+# Initialize the database
+init_db()
+
+# Custom CSS for better layout
+def load_css():
+    st.markdown("""
+    <style>
+        .main {
+            max-width: 1200px;
+            padding: 2rem;
+        }
+        .header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 1rem;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+        }
+        .card {
+            background-color: #f8f9fa;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .break-card {
+            background-color: #e9f7ef;
+            border-left: 5px solid #2ecc71;
+        }
+        .booking-card {
+            background-color: #f5e8ff;
+            border-left: 5px solid #9b59b6;
+        }
+        .admin-card {
+            background-color: #e3f2fd;
+            border-left: 5px solid #3498db;
+        }
+        .btn-primary {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .btn-danger {
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .btn-success {
+            background-color: #2ecc71;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .availability-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 50px;
+            font-weight: bold;
+            font-size: 0.8rem;
+        }
+        .available {
+            background-color: #2ecc71;
+            color: white;
+        }
+        .full {
+            background-color: #e74c3c;
+            color: white;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+# Authentication
+def login_section():
+    load_css()
+    st.markdown("""
+    <div class="header">
+        <h1>⏱️ Break Scheduling System</h1>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+    
+    if not st.session_state.authenticated:
+        tab1, tab2 = st.tabs(["🔑 Login", "📝 Register"])
+        
+        with tab1:
+            with st.form("login_form"):
+                st.subheader("Agent/Admin Login")
+                username = st.text_input("Username")
+                password = st.text_input("Password", type="password")
+                
+                if st.form_submit_button("Login", type="primary"):
+                    user = login_user(username, password)
+                    if user:
+                        st.session_state.authenticated = True
+                        st.session_state.user = user
+                        st.session_state.username = user["username"]
+                        st.session_state.role = user["role"]
+                        st.session_state.team = user["team"]
+                        st.rerun()
+                    else:
+                        st.error("Invalid username or password")
+        
+        with tab2:
+            if st.session_state.get("role") == "admin":
+                with st.form("register_form"):
+                    st.subheader("Register New User")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        new_username = st.text_input("Username")
+                        new_role = st.selectbox("Role", ["agent", "admin", "team_lead"])
+                    with col2:
+                        new_password = st.text_input("Password", type="password")
+                        new_team = st.text_input("Team")
+                    
+                    if st.form_submit_button("Register User", type="primary"):
+                        if register_user(new_username, new_password, new_role, new_team):
+                            st.success("User registered successfully!")
+                        else:
+                            st.error("Username already exists")
+            else:
+                st.info("ℹ️ Only admins can register new users. Please login as admin.")
+    else:
+        st.sidebar.markdown(f"""
+        <div class="card">
+            <h3>👤 User Info</h3>
+            <p><strong>Username:</strong> {st.session_state.username}</p>
+            <p><strong>Role:</strong> {st.session_state.role.capitalize()}</p>
+            <p><strong>Team:</strong> {st.session_state.team}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        if st.sidebar.button("🚪 Logout", type="primary"):
+            st.session_state.authenticated = False
+            st.session_state.clear()
+            st.rerun()
+        breaks_section()
+
+# Break scheduling section
+def breaks_section():
+    # Define shift templates
+    SHIFT_TEMPLATES = {
+        "USA ENGLISH FIRST SHIFT": {
+            "breaks": [
+                {"name": "TEABREAK", "start": "16:00", "end": "16:15", "max_users": 5},
+                {"name": "TEABREAK", "start": "16:15", "end": "16:30", "max_users": 5},
+                {"name": "TEABREAK", "start": "16:30", "end": "16:45", "max_users": 5},
+                {"name": "TEABREAK", "start": "16:45", "end": "17:00", "max_users": 5},
+                {"name": "TEABREAK", "start": "17:00", "end": "17:15", "max_users": 5},
+                {"name": "TEABREAK", "start": "17:15", "end": "17:30", "max_users": 5},
+                {"name": "TEABREAK", "start": "21:45", "end": "22:00", "max_users": 5},
+                {"name": "TEABREAK", "start": "22:00", "end": "22:15", "max_users": 5},
+                {"name": "TEABREAK", "start": "22:15", "end": "22:30", "max_users": 5},
+            ],
+            "rules": [
+                "NO BREAK IN THE LAST HOUR WILL BE AUTHORIZED",
+                "PS. ONLY 5 MINUTES BIO IS AUTHORIZED IN THE LAST HOUR BETWEEN 23:00 TILL 23:30 AND NO BREAK AFTER 23:30 !!!",
+                "BREAKS SHOULD BE TAKEN AT THE NOTED TIME AND NEED TO BE CONFIRMED FROM RTA OR TEAM LEADERS"
+            ]
+        },
+        "USA ENGLISH SECOND SHIFT": {
+            "breaks": [
+                {"name": "TEABREAK", "start": "19:30", "end": "20:00", "max_users": 5},
+                {"name": "TEABREAK", "start": "20:00", "end": "20:30", "max_users": 5},
+                {"name": "TEABREAK", "start": "20:30", "end": "21:00", "max_users": 5},
+                {"name": "TEABREAK", "start": "21:00", "end": "21:30", "max_users": 5},
+            ],
+            "rules": [
+                "Non Respect Of Break Rules = Incident",
+                "BREAKS SHOULD BE TAKEN AT THE NOTED TIME AND NEED TO BE CONFIRMED FROM RTA OR TEAM LEADERS"
+            ]
+        }
+    }
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    selected_date = st.date_input("📅 Select date", datetime.now())
+    formatted_date = selected_date.strftime("%Y-%m-%d")
+
+    # Admin section for managing templates
+    if st.session_state.role == "admin":
+        st.markdown("""
+        <div class="header">
+            <h2>🛠️ Admin Dashboard</h2>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        tab1, tab2, tab3 = st.tabs(["📋 Break Templates", "➕ Manage Breaks", "📊 View Bookings"])
+        
+        with tab1:
+            st.markdown("""
+            <div class="card admin-card">
+                <h3>Break Template Management</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            selected_template = st.selectbox("Select Template", list(SHIFT_TEMPLATES.keys()))
+            
+            # Display rules
+            st.markdown("""
+            <div class="card">
+                <h4>📜 Break Rules</h4>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            for rule in SHIFT_TEMPLATES[selected_template]["rules"]:
+                st.markdown(f"""
+                <div class="card">
+                    <p>• {rule}</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Display breaks in template
+            st.markdown("""
+            <div class="card">
+                <h4>🕒 Break Schedule Template</h4>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            for i, break_slot in enumerate(SHIFT_TEMPLATES[selected_template]["breaks"]):
+                col1, col2, col3, col4 = st.columns([3,2,2,2])
+                with col1:
+                    st.text_input("Break Name", value=break_slot["name"], key=f"tname_{i}", disabled=True)
+                with col2:
+                    st.text_input("Start", value=break_slot["start"], key=f"tstart_{i}", disabled=True)
+                with col3:
+                    st.text_input("End", value=break_slot["end"], key=f"tend_{i}", disabled=True)
+                with col4:
+                    st.number_input("Max", value=break_slot["max_users"], key=f"tmax_{i}", disabled=True)
+            
+            if st.button("💾 Apply This Template", type="primary"):
+                # Clear existing breaks for this date
+                conn = sqlite3.connect("data/break_schedule.db")
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM breaks")
+                    
+                    # Add new breaks from template
+                    for break_slot in SHIFT_TEMPLATES[selected_template]["breaks"]:
+                        cursor.execute("""
+                            INSERT INTO breaks (break_name, start_time, end_time, max_users, created_by, timestamp) 
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        """, (
+                            break_slot["name"],
+                            break_slot["start"],
+                            break_slot["end"],
+                            break_slot["max_users"],
+                            st.session_state.username,
+                            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        ))
+                    
+                    conn.commit()
+                    st.success("Template applied successfully!")
+                finally:
+                    conn.close()
+        
+        with tab2:
+            st.markdown("""
+            <div class="card admin-card">
+                <h3>Manual Break Management</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            with st.form("add_break_form"):
+                st.subheader("Add New Break Slot")
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    break_name = st.text_input("Break Name", "TEABREAK")
+                with col2:
+                    start_time = st.text_input("Start Time (HH:MM)", "16:00")
+                with col3:
+                    end_time = st.text_input("End Time (HH:MM)", "16:15")
+                with col4:
+                    max_users = st.number_input("Max Users", min_value=1, value=5)
+                
+                if st.form_submit_button("➕ Add Break Slot", type="primary"):
+                    add_break_slot(break_name, start_time, end_time, max_users)
+                    st.rerun()
+            
+            st.markdown("""
+            <div class="card">
+                <h4>Current Break Slots</h4>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            current_breaks = get_all_breaks()
+            
+            if current_breaks:
+                for b in current_breaks:
+                    b_id, name, start, end, max_u, created_by, ts = b
+                    
+                    col1, col2, col3, col4, col5 = st.columns([3,2,2,2,1])
+                    with col1:
+                        st.text_input("Name", value=name, key=f"name_{b_id}")
+                    with col2:
+                        st.text_input("Start", value=start, key=f"start_{b_id}")
+                    with col3:
+                        st.text_input("End", value=end, key=f"end_{b_id}")
+                    with col4:
+                        st.number_input("Max Users", min_value=1, value=max_u, key=f"max_{b_id}")
+                    with col5:
+                        if st.button("🗑️", key=f"delete_{b_id}"):
+                            delete_break_slot(b_id)
+                            st.rerun()
+            else:
+                st.info("No break slots currently defined")
+        
+        with tab3:
+            st.markdown("""
+            <div class="card admin-card">
+                <h3>All Bookings for Selected Date</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            bookings = get_all_bookings(formatted_date)
+            if bookings:
+                for b in bookings:
+                    b_id, break_id, user_id, username, date, ts, break_name, start, end, role = b
+                    
+                    st.markdown(f"""
+                    <div class="card booking-card">
+                        <div style="display: flex; justify-content: space-between;">
+                            <div>
+                                <strong>{username}</strong> ({role})<br>
+                                {break_name} ({start} - {end})
+                            </div>
+                            <div>
+                                <button class="btn-danger" onclick="document.getElementById('cancel_{b_id}').click()">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if st.button("Cancel", key=f"cancel_{b_id}", on_click=lambda: cancel_booking(b_id), visible=False):
+                        pass
+            else:
+                st.info("No bookings for selected date")
+            
+            if st.button("🧹 Clear All Bookings", type="primary"):
+                clear_all_break_bookings()
+                st.rerun()
+    
+    else:
+        # Agent view
+        st.markdown("""
+        <div class="header">
+            <h2>👋 Welcome, {st.session_state.username}</h2>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        tab1, tab2 = st.tabs(["🕒 Available Breaks", "📋 My Bookings"])
+        
+        with tab1:
+            st.markdown("""
+            <div class="card">
+                <h3>Available Break Slots</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Display rules
+            st.markdown("""
+            <div class="card">
+                <h4>📜 Break Rules</h4>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            for rule in list(SHIFT_TEMPLATES.values())[0]["rules"]:
+                st.markdown(f"""
+                <div class="card">
+                    <p>• {rule}</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            available_breaks = get_available_break_slots(formatted_date)
+            
+            if available_breaks:
+                for b in available_breaks:
+                    b_id, name, start, end, max_u, curr_u, created_by, ts = b
+                    
+                    conn = sqlite3.connect("data/break_schedule.db")
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT COUNT(*) 
+                        FROM break_bookings 
+                        WHERE break_id = ? AND booking_date = ?
+                    """, (b_id, formatted_date))
+                    booked_count = cursor.fetchone()[0]
+                    conn.close()
+                    
+                    remaining = max_u - booked_count
+                    availability_class = "available" if remaining > 0 else "full"
+                    availability_text = f"{remaining}/{max_u} slots"
+                    
+                    st.markdown(f"""
+                    <div class="card break-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h4>{name}</h4>
+                                <p>{start} - {end}</p>
+                            </div>
+                            <div style="text-align: right;">
+                                <span class="availability-badge {availability_class}">{availability_text}</span><br>
+                                <button class="btn-success" onclick="document.getElementById('book_{b_id}').click()" {"disabled" if remaining <= 0 else ""}>Book Now</button>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if st.button("Book", key=f"book_{b_id}", on_click=lambda: book_break(b_id, formatted_date), visible=False):
+                        pass
+            else:
+                st.info("No break slots available for booking")
+        
+        with tab2:
+            st.markdown("""
+            <div class="card">
+                <h3>My Bookings</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            user_bookings = get_user_bookings(st.session_state.username, formatted_date)
+            
+            if user_bookings:
+                for b in user_bookings:
+                    b_id, break_id, user_id, username, date, ts, break_name, start, end = b
+                    
+                    st.markdown(f"""
+                    <div class="card booking-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h4>{break_name}</h4>
+                                <p>{start} - {end}</p>
+                            </div>
+                            <div>
+                                <button class="btn-danger" onclick="document.getElementById('cancel_{b_id}').click()">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if st.button("Cancel", key=f"cancel_{b_id}", on_click=lambda: cancel_booking(b_id), visible=False):
+                        pass
+            else:
+                st.info("You have no bookings for selected date")
+
+def book_break(break_id, date):
+    conn = sqlite3.connect("data/break_schedule.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE username = ?", (st.session_state.username,))
+    user_id = cursor.fetchone()[0]
+    conn.close()
+    
+    book_break_slot(break_id, user_id, st.session_state.username, date)
+    st.rerun()
+
+def cancel_booking(booking_id):
+    conn = sqlite3.connect("data/break_schedule.db")
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM break_bookings WHERE id = ?", (booking_id,))
+    conn.commit()
+    conn.close()
+    st.rerun()
+
+# Main app
+def main():
+    st.set_page_config(
+        page_title="Break Scheduling System",
+        page_icon="⏱️",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+    
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+    
+    if not st.session_state.authenticated:
+        login_section()
+    else:
+        breaks_section()
+
+if __name__ == "__main__":
+    main()
