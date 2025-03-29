@@ -43,6 +43,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Function to detect general patterns in the phone number
 def is_fancy_number(phone_number):
     clean_number = re.sub(r'[^\d]', '', phone_number)
     
@@ -52,27 +53,46 @@ def is_fancy_number(phone_number):
     elif len(clean_number) != 10:
         return False, "Invalid length"
 
-    # 1. Check for triplets (666, 888, 999, etc.)
-    if re.search(r'(\d)\1{2}', clean_number):
-        triplet = re.search(r'(\d)\1{2}', clean_number).group()
-        return True, f"Triplet pattern ({triplet})"
-
-    # 2. Check for common number sequences that are "fancy"
-    common_sequences = [
-        '16788999999', '13172611666', '19296936363', '13162859999',  # User-provided examples
-        '9876543210', '1234567890', '1111111111', '2222222222', '3333333333', '4444444444', '5555555555',
-        '6666666666', '7777777777', '8888888888', '9999999999',  # Simple repeating sequences
-        '1010101010', '1112223333', '3216549870', '1231231231', '8088888888'  # More common sequences
+    # 1. Check for 6-digit sequential or repeating patterns (e.g., 123456, 987654, 666666, 100001)
+    six_digit_patterns = [
+        r'123456', r'987654', r'666666', r'100001', r'111111', r'654321', r'121212', r'111222', r'012345'
     ]
-    
-    if clean_number in common_sequences:
-        return True, f"Common sequence ({clean_number})"
+    for pattern in six_digit_patterns:
+        if re.search(pattern, clean_number):
+            return True, f"6-digit sequence pattern detected"
 
-    # 3. Check for sequential patterns (e.g., increasing or decreasing)
-    if re.search(r'0123456789', clean_number) or re.search(r'9876543210', clean_number):
-        return True, "Sequential pattern (ascending/descending)"
+    # 2. Check for 3-digit repeating or sequential patterns (e.g., 444 555, 121 122, 786 786, 457 456)
+    three_digit_patterns = [
+        ('444', '555'), ('121', '122'), ('786', '786'), ('457', '456'), ('111', '222'), ('333', '444')
+    ]
+    for i in range(len(clean_number)-5):
+        chunk = clean_number[i:i+6]
+        for pair in three_digit_patterns:
+            if chunk[:3] == pair[0] and chunk[3:] == pair[1]:
+                return True, f"3-digit pair pattern detected ({pair[0]} {pair[1]})"
 
-    # 4. Check for specific patterns with repeated sequences like 666, 888, etc.
+    # 3. Check for 2-digit repeating or patterned sequences (e.g., 11 12 13, 20 20 20, 01 01 01, 32 42 52)
+    two_digit_patterns = [
+        ('11', '12', '13'), ('20', '20', '20'), ('01', '01', '01'), ('32', '42', '52')
+    ]
+    for i in range(len(clean_number)-3):
+        chunk = clean_number[i:i+6]
+        for pair in two_digit_patterns:
+            if chunk[:2] == pair[0] and chunk[2:4] == pair[1] and chunk[4:6] == pair[2]:
+                return True, f"2-digit sequence pattern detected ({pair[0]} {pair[1]} {pair[2]})"
+
+    # 4. Exceptional cases: Generalizing the exceptional cases using patterns
+    exceptional_patterns = [
+        r'79\d{8}',       # Start with 79 followed by 8 digits
+        r'79[0-9]{6,7}\d{4}',  # Start with 79, with specific patterns like zeros followed by different digits
+        r'789878\d{4}',    # Alternating patterns (e.g., 7898789555)
+        r'799900\d{4}'     # Similar to 7999004455
+    ]
+    for pattern in exceptional_patterns:
+        if re.match(pattern, clean_number):
+            return True, f"Exceptional case pattern detected"
+
+    # 5. Check for special repeating digits (e.g., 666, 888, 999, etc.)
     special_patterns = {
         r'\d*666\d*': "Special 666 pattern",
         r'\d*888\d*': "Special 888 pattern",
@@ -83,9 +103,13 @@ def is_fancy_number(phone_number):
         if re.search(pattern, clean_number):
             return True, desc
 
-    # 5. Check for repeating digit sequences
+    # 6. Check for repeating digit sequences (5+ repeating digits)
     if re.search(r'(\d)\1{4,}', clean_number):
         return True, "5+ repeating digits"
+
+    # 7. Check for sequential patterns (e.g., increasing or decreasing)
+    if re.search(r'0123456789', clean_number) or re.search(r'9876543210', clean_number):
+        return True, "Sequential pattern (ascending/descending)"
 
     return False, "No fancy pattern detected"
 
