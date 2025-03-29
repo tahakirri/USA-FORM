@@ -46,64 +46,95 @@ st.markdown("""
 def is_fancy_number(phone_number):
     clean_number = re.sub(r'[^\d]', '', phone_number)
     
-    # Length validation (expecting a 10 or 11 digit number)
+    # Length validation
     if len(clean_number) == 11 and clean_number.startswith('1'):
         clean_number = clean_number[1:]  # Remove country code for analysis
     elif len(clean_number) != 10:
         return False, "Invalid length"
     
-    # According to Lycamobile policy, only analyze the last 6 digits
     last_six = clean_number[-6:]
     
-    # Patterns found in the last 6 digits
+    # Store all patterns found
     patterns_found = []
     
-    # 1. Check for 5-digit sequences within the last 6 digits
-    # Ascending sequence (e.g., 12345)
-    if all(int(last_six[i]) == int(last_six[i-1]) + 1 for i in range(1, 5)):
-        patterns_found.append(f"5-digit ascending sequence ({last_six})")
+    # 1. Check for sequences of 4+ identical digits (main fix for 116666 case)
+    for i in range(len(last_six) - 3):
+        if last_six[i] == last_six[i+1] == last_six[i+2] == last_six[i+3]:
+            # Check how long this sequence continues
+            j = i + 4
+            while j < len(last_six) and last_six[j] == last_six[i]:
+                j += 1
+            seq_length = j - i
+            patterns_found.append(f"{seq_length} repeated {last_six[i]}s ({last_six[i:j]})")
     
-    # Descending sequence (e.g., 98765)
-    if all(int(last_six[i]) == int(last_six[i-1]) - 1 for i in range(1, 5)):
-        patterns_found.append(f"5-digit descending sequence ({last_six})")
+    # 2. Check for 5-digit sequences within the last 6 digits
+    for i in [0, 1]:  # Only check first and second positions in 6-digit segment
+        segment = last_six[i:i+5]
+        
+        # Ascending sequence (e.g., 12345)
+        if segment in "0123456789":
+            patterns_found.append(f"5-digit ascending sequence ({segment})")
+        
+        # Descending sequence (e.g., 98765)
+        if segment in "9876543210":
+            patterns_found.append(f"5-digit descending sequence ({segment})")
+        
+        # Mirrored patterns (e.g., 12321)
+        if segment == segment[::-1]:
+            patterns_found.append(f"Mirrored 5-digit pattern ({segment})")
     
-    # Repeated digits (e.g., 66666)
+    # 3. Check for special 6-digit patterns
+    # All same digit (e.g., 666666)
     if len(set(last_six)) == 1:
-        patterns_found.append(f"5 repeated digits ({last_six})")
+        patterns_found.append(f"6 repeated digits ({last_six})")
     
-    # Mirrored patterns (e.g., 12321)
-    if last_six == last_six[::-1]:
-        patterns_found.append(f"5-digit mirrored pattern ({last_six})")
+    # Alternating pattern (e.g., 121212)
+    if all(last_six[i] == last_six[i%2] for i in range(6)):
+        patterns_found.append(f"Perfect alternating pattern ({last_six})")
     
-    # 2. Check for 3-digit sequences
-    # Repeated triplets (e.g., 444555)
-    if last_six[:3] == last_six[3:]:
-        patterns_found.append(f"Repeated 3-digit pattern ({last_six[:3]}-{last_six[3:]})")
+    # 4. Check for repeated/mirrored 3-digit blocks
+    if len(last_six) == 6:
+        first_three = last_six[:3]
+        second_three = last_six[3:]
+        
+        # Repeated triplets (e.g., 123123)
+        if first_three == second_three:
+            patterns_found.append(f"Repeated 3-digit pattern ({first_three}-{second_three})")
+        
+        # Mirrored triplets (e.g., 123321)
+        if last_six == last_six[::-1]:
+            patterns_found.append(f"Perfect mirrored pattern ({last_six})")
+        
+        # Double triplets (e.g., 111222)
+        if len(set(first_three)) == 1 and len(set(second_three)) == 1 and first_three != second_three:
+            patterns_found.append(f"Double triplets ({first_three}-{second_three})")
     
-    # Closely related triplets (e.g., 121122, 786786)
-    if (int(last_six[:3]) == int(last_six[3:6]) - 111 or
-        int(last_six[:3]) == int(last_six[3:6]) + 111):
-        patterns_found.append(f"Closely related 3-digit pattern ({last_six[:3]}-{last_six[3:]})")
+    # 5. Check for special 4-digit patterns
+    for i in range(3):  # Check all possible 4-digit segments in last 6 digits
+        segment = last_six[i:i+4]
+        
+        # XYXY pattern (e.g., 1212)
+        if segment[:2] == segment[2:4] and segment[0] != segment[1]:
+            patterns_found.append(f"XYXY pattern ({segment})")
     
-    # 3. Check for 2-digit sequences
-    # Repeated or incremental pairs (e.g., 111213, 202020)
-    if last_six[:2] == last_six[2:4] == last_six[4:]:
-        patterns_found.append(f"Repeated 2-digit sequence ({last_six[:2]}-{last_six[2:4]}-{last_six[4:]})")
-    
-    # Incremental pairs (e.g., 111213, 324252)
-    if (int(last_six[:2]) + 1 == int(last_six[2:4]) and
-        int(last_six[2:4]) + 1 == int(last_six[4:])):
-        patterns_found.append(f"Incremental 2-digit sequence ({last_six[:2]}-{last_six[2:4]}-{last_six[4:]})")
-    
-    # Exceptional checks: XYXY pattern, alternating digits, etc.
-    if len(last_six) == 6 and all(last_six[i] == last_six[i % 2] for i in range(6)):
-        patterns_found.append(f"Alternating pattern ({last_six})")
-    
-    # 4. Return result
+    # Return result based on patterns found
     if patterns_found:
-        return True, ", ".join(patterns_found)
-    else:
-        return False, "No fancy pattern detected"
+        # Filter to only show the most significant patterns
+        significant_patterns = []
+        for pattern in patterns_found:
+            # Always include 4+ repeated digits, 5+ sequences, and special 6-digit patterns
+            if ("repeated" in pattern and int(pattern.split()[0]) >= 4) or \
+               ("5-digit" in pattern) or \
+               ("6 repeated" in pattern) or \
+               ("Perfect" in pattern) or \
+               ("Double triplets" in pattern) or \
+               ("Repeated 3-digit" in pattern):
+                significant_patterns.append(pattern)
+        
+        if significant_patterns:
+            return True, ", ".join(significant_patterns)
+    
+    return False, "No fancy pattern detected"
 
 # Streamlit UI
 st.header("🔢 Lycamobile Fancy Number Checker")
@@ -124,7 +155,6 @@ with col1:
             # Format display
             if len(clean_number) == 10:
                 formatted_num = f"{clean_number[:3]}-{clean_number[3:6]}-{clean_number[6:]}"
-
             elif len(clean_number) == 11 and clean_number.startswith('1'):
                 formatted_num = f"1-{clean_number[1:4]}-{clean_number[4:7]}-{clean_number[7:]}"
             else:
@@ -169,31 +199,41 @@ with col2:
     
     According to Lycamobile's classification policy, only the **last six digits** are analyzed for determining if a number is fancy/golden.
     
-    #### 5-digit Sequences:
-    - Consecutive ascending (e.g., 12345)
-    - Consecutive descending (e.g., 98765)
-    - Repeated digits (e.g., 66666)
-    - Mirrored patterns (e.g., 12321)
+    #### Strong Patterns (Qualify as Fancy):
+    - 4+ identical digits in sequence (e.g., 116666, 5555)
+    - 5+ digit sequences (ascending/descending)
+    - Perfect mirrored numbers (e.g., 123321)
+    - Repeated 3-digit blocks (e.g., 123123)
+    - Double triplets (e.g., 111222)
+    - Perfect alternating patterns (e.g., 121212)
     
-    #### 3-digit Sequences:
-    - Repeated triplets (e.g., 444555)
-    - Related triplets (e.g., 121122, 786786, 457456)
+    #### Weak Patterns (Don't Qualify):
+    - Simple triplets alone (e.g., 555)
+    - Short XY patterns (e.g., 1212 in a longer sequence)
+    - Isolated repeating digits
     
-    #### 2-digit Sequences:
-    - Repeated pairs (e.g., 202020, 010101)
-    - Incremental pairs (e.g., 111213, 324252)
-    
-    #### Mirror and Symmetrical Patterns:
-    - Palindromic structures (e.g., 345543, 122221)
-    - Symmetrical patterns (e.g., 808808)
-    
-    #### Repeating Block Patterns:
-    - Repeating blocks of digits (e.g., 345345, 123123)
-    
-    #### Other Recognized Patterns:
-    - Triplets of same digit (e.g., 111, 222)
-    - Quad digits (e.g., 9999)
-    - Double-doubles (e.g., 1122, 5566)
-    - Alternating digits (e.g., 525252)
-    - XYXY patterns (e.g., 3636)
+    #### Examples of Fancy Numbers:
+    - 116666 (quad 6s)
+    - 123456 (ascending)
+    - 654321 (descending)
+    - 111222 (double triplet)
+    - 123123 (repeated block)
+    - 123321 (mirrored)
+    - 121212 (alternating)
     """)
+
+# Debug testing
+if st.checkbox("Show debug examples"):
+    test_numbers = [
+        "13172611666",  # Last 6: 116666 (quad 6s) - FANCY
+        "16109055580",  # Last 6: 55580 (only triplet 5s) - NOT FANCY
+        "1234567890",   # Last 6: 456789 (ascending) - FANCY
+        "18005555555",  # Last 6: 555555 (all 5s) - FANCY
+        "17021212121"   # Last 6: 121212 (alternating) - FANCY
+    ]
+    
+    st.markdown("### Debug Test Results")
+    for number in test_numbers:
+        is_fancy, pattern = is_fancy_number(number)
+        result = "FANCY" if is_fancy else "NOT FANCY"
+        st.write(f"Number: {number} - Last 6: {number[-6:]} - {result} - Pattern: {pattern}")
