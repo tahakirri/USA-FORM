@@ -301,19 +301,15 @@ elif section == "🔢 Fancy Number Checker":
     # Explanation of fancy numbers
     with st.expander("ℹ️ What makes a phone number fancy?"):
         st.markdown("""
-        **Fancy phone numbers** are numbers that have special patterns that make them more memorable or desirable. 
-        Common patterns include:
+        **Fancy phone numbers** must clearly match one of these specific patterns:
         
-        - **Repeating digits**: <span class="pattern-example">555-5555</span>, <span class="pattern-example">888-8888</span>
-        - **Sequential digits**: <span class="pattern-example">123-4567</span>, <span class="pattern-example">987-6543</span>
-        - **Palindrome numbers**: <span class="pattern-example">123-4321</span>, <span class="pattern-example">345-6543</span>
-        - **Same first and last digits**: <span class="pattern-example">347-555-6666</span>
-        - **Multiple repeating patterns**: <span class="pattern-example">501-530-3030</span>
-        - **All same digit except one**: <span class="pattern-example">707-500-0001</span>
-        - **Special number patterns**: <span class="pattern-example">1317-261-1666</span> (contains 666)
-        - **Mirror/repeating patterns**: <span class="pattern-example">17029-088-077</span> (last digits mirror)
+        - **4+ repeating digits**: <span class="pattern-example">555-5555</span>
+        - **Perfect sequences**: <span class="pattern-example">123-4567</span> or <span class="pattern-example">987-6543</span>
+        - **Palindromes**: <span class="pattern-example">123-4321</span>
+        - **Mirror patterns**: <span class="pattern-example">17029-088-077</span>
+        - **All same digit**: <span class="pattern-example">888-8888</span>
         
-        These numbers are often considered premium and may be sold at higher prices.
+        Numbers with minor patterns or random repetitions won't be considered fancy.
         """, unsafe_allow_html=True)
     
     # Input field for phone number
@@ -324,201 +320,75 @@ elif section == "🔢 Fancy Number Checker":
     # Check button
     check_button = st.button("🔍 Check if Fancy")
     
-    # Function to check if a number is fancy
+    # Precise fancy number detection
     def is_fancy_number(phone_number):
         # Remove all non-digit characters
         clean_number = re.sub(r'[^\d]', '', phone_number)
         
-        # Check if the number is 10 or 11 digits (standard US numbers)
-        if len(clean_number) not in [10, 11]:
-            return False, ["Invalid length (must be 10 or 11 digits)"]
-        
-        # Check for various fancy patterns
-        patterns = [
-            (r'^(\d)\1{2,}\1{3,}$', "Repeating digits (e.g., 555-5555)"),  # All same digit
-            (r'^(\d)\1{2,}(\d)\2{2,}$', "Multiple repeating patterns (e.g., 555-6666)"),
-            (r'^(\d)\1{5,}', "Long repeating sequence (6+ same digits)"),
-            (r'(\d)\1{3,}', "Four or more of the same digit in a row"),
-            (r'123|234|345|456|567|678|789|987|876|765|654|543|432|321', "Sequential digits"),
-            (r'(\d{3})\1', "Repeating 3-digit pattern"),
-            (r'^(\d)(\d)(\d)\3\2\1$', "Palindrome (e.g., 123-321)"),
-            (r'^(\d)\1(\d)\2(\d)\3$', "Alternating pairs (e.g., 11-22-33)"),
-            (r'666|777|888|999|000|111|222|333|444|555', "Special triple digits"),
-            (r'^(\d)\1{2}(\d)\2{2}(\d)\3{2}$', "Triple patterns (e.g., 111-222-333)"),
-            (r'^(\d)\1?(\d)\2?(\d)\3?$', "Increasing or decreasing pattern"),
-            (r'^(\d{3})\1\1$', "Repeating 3-digit block (e.g., 123-123-123)"),
-            (r'^(\d)\1{1,}(\d)\2{1,}(\d)\3{1,}$', "Multiple repeating digits"),
-            (r'^(\d{2})\1{2,}', "Repeating 2-digit pattern multiple times"),
-            (r'^(\d)\1(\d)\1(\d)\1$', "Alternating with same digit (e.g., 1-2-1-3-1)"),
-            (r'^\d*(\d)\1{2,}\d*$', "Three or more of same digit anywhere"),
-            (r'^1?(\d{3})\1$', "First 3 digits repeat after area code"),
-            (r'^1?(\d)\1{2}(\d)\2{2}(\d)\3{2}$', "Triple patterns with area code"),
-            (r'^1?(\d{3})(\d)\2{3}$', "Last 4 digits same except first"),
-            (r'^1?(\d)\1?(\d)\2?(\d)\3?(\d)\4?$', "Increasing/decreasing with possible skips"),
-            (r'^1?(\d{5})(\d{3})(\d{3})$', "5-3-3 pattern (e.g., 17029-088-077)"),
-            (r'^1?(\d{3})(\d{3})(\d{4})$', "Standard 3-3-4 pattern"),
-            (r'^1?(\d{2})(\d{3})(\d{3})(\d{3})$', "2-3-3-3 pattern"),
-            (r'^1?(\d{3})(\d{2})(\d{2})(\d{4})$', "3-2-2-4 pattern"),
-            (r'^1?(\d{4})(\d{3})(\d{4})$', "4-3-4 pattern"),
-            (r'^1?(\d{3})(\d{4})(\d{4})$', "3-4-4 pattern"),
-            # New patterns to catch numbers like 17029088077
-            (r'^1?(\d{5})(\d{3})(\d{3})$', "5-3-3 pattern with mirror ending (e.g., 17029-088-077)"),
-            (r'^1?(\d{3})(\d{3})(\d{3})(\d{2})$', "3-3-3-2 pattern"),
-            (r'^1?(\d{2})(\d{2})(\d{2})(\d{2})(\d{3})$', "2-2-2-2-3 pattern"),
-            (r'^1?(\d{4})(\d{4})(\d{3})$', "4-4-3 pattern"),
-            # Special mirror patterns
-            (r'^1?(\d{5})(\d{3})(\d{3})$', "Mirror ending (last 3 digits mirror previous 3)"),
-            (r'^1?(\d{4})(\d{3})(\d{4})$', "Partial mirror pattern"),
-            (r'^1?(\d{3})(\d{4})(\d{4})$', "Repeating 4-digit endings"),
-            (r'^1?(\d{2})(\d{3})(\d{3})(\d{3})$', "2-3-3-3 with repeating endings"),
-            (r'^1?(\d{3})(\d{2})(\d{2})(\d{4})$', "3-2-2-4 with special endings"),
-            (r'^1?(\d{5})(\d{3})(\d{3})$', "5-3-3 with special endings (e.g., 17029-088-077)"),
-            (r'^1?(\d{3})(\d{3})(\d{3})(\d{2})$', "3-3-3-2 with special endings"),
-            (r'^1?(\d{2})(\d{2})(\d{2})(\d{2})(\d{3})$', "2-2-2-2-3 with special endings"),
-            (r'^1?(\d{4})(\d{4})(\d{3})$', "4-4-3 with special endings"),
-            (r'^1?(\d{5})(\d{3})(\d{3})$', "5-3-3 with mirror endings (e.g., 17029-088-077)")
-        ]
-        
-        matched_patterns = []
-        for pattern, description in patterns:
-            if re.search(pattern, clean_number):
-                # For the 5-3-3 pattern (like 17029088077), check if the last 3 digits mirror the previous 3
-                if pattern == r'^1?(\d{5})(\d{3})(\d{3})$':
-                    match = re.match(r'^1?(\d{5})(\d{3})(\d{3})$', clean_number)
-                    if match:
-                        middle = match.group(2)
-                        end = match.group(3)
-                        # Check if the last digit of middle matches first of end
-                        if middle[-1] == end[0] and middle[-2] == end[1] and middle[-3] == end[2]:
-                            matched_patterns.append("Mirror pattern (e.g., 17029-088-077)")
-                        else:
-                            matched_patterns.append(description)
-                else:
-                    matched_patterns.append(description)
-        
-        # Special case for numbers like 17029088077
+        # Validate length (10 digits or 11 digits starting with 1)
         if len(clean_number) == 11 and clean_number.startswith('1'):
-            # Check for 5-3-3 pattern with mirror ending
-            if re.match(r'^1(\d{5})(\d{3})(\d{3})$', clean_number):
-                match = re.match(r'^1(\d{5})(\d{3})(\d{3})$', clean_number)
-                middle = match.group(2)
-                end = match.group(3)
-                if middle[-1] == end[0] and middle[-2] == end[1] and middle[-3] == end[2]:
-                    matched_patterns.append("Special mirror pattern (e.g., 17029-088-077)")
+            clean_number = clean_number[1:]  # Remove country code
+        elif len(clean_number) != 10:
+            return False, "Invalid length (must be 10 digits or 11 digits starting with 1)"
         
-        if matched_patterns:
-            return True, matched_patterns
-        else:
-            return False, ["No fancy patterns detected"]
+        # Check for 4+ repeating digits (e.g., 5555555)
+        if re.search(r'(\d)\1{3,}', clean_number):
+            return True, "4+ repeating digits"
+        
+        # Check for perfect sequences (e.g., 1234567890 or 9876543210)
+        if clean_number in '1234567890' or clean_number in '9876543210':
+            return True, "Perfect sequence"
+        
+        # Check for palindromes (reads same forwards and backwards)
+        if clean_number == clean_number[::-1]:
+            return True, "Palindrome"
+        
+        # Check for mirror patterns in last 6 digits (e.g., 088 077)
+        last_six = clean_number[4:]
+        if len(last_six) == 6 and last_six[:3] == last_six[3:]:
+            return True, "Mirror pattern in last 6 digits"
+        
+        # Check for all same digit
+        if len(set(clean_number)) == 1:
+            return True, "All same digit"
+        
+        return False, "No fancy pattern detected"
     
     if check_button and phone_input:
-        # Check if the input is a valid phone number
+        is_fancy, pattern = is_fancy_number(phone_input)
         clean_number = re.sub(r'[^\d]', '', phone_input)
         
-        if len(clean_number) not in [10, 11]:
-            st.error("❌ Invalid phone number length. Please enter a 10-digit US number or 11-digit number starting with 1.")
+        # Format the number for display
+        if len(clean_number) == 10:
+            formatted_number = f"{clean_number[:3]}-{clean_number[3:6]}-{clean_number[6:]}"
+        elif len(clean_number) == 11:
+            formatted_number = f"{clean_number[0]}-{clean_number[1:4]}-{clean_number[4:7]}-{clean_number[7:]}"
         else:
-            is_fancy, patterns = is_fancy_number(phone_input)
+            formatted_number = clean_number
             
-            # Format the phone number for display
-            if len(clean_number) == 10:
-                formatted_number = f"{clean_number[:3]}-{clean_number[3:6]}-{clean_number[6:]}"
-            else:  # 11 digits
-                # Special formatting for numbers like 17029088077 (1-70290-880-77)
-                if re.match(r'^1(\d{5})(\d{3})(\d{3})$', clean_number):
-                    match = re.match(r'^1(\d{5})(\d{3})(\d{3})$', clean_number)
-                    formatted_number = f"1-{match.group(1)}-{match.group(2)}-{match.group(3)}"
-                else:
-                    formatted_number = f"{clean_number[:1]}-{clean_number[1:4]}-{clean_number[4:7]}-{clean_number[7:]}"
+        if is_fancy:
+            st.markdown(f"""
+            <div class="result-box fancy-result">
+                <h3><span class="fancy-number">✨ {formatted_number} ✨</span></h3>
+                <p>This is a <strong>FANCY</strong> phone number!</p>
+                <p><strong>Pattern:</strong> {pattern}</p>
+            </div>
+            """, unsafe_allow_html=True)
             
-            if is_fancy:
-                st.markdown(f"""
-                <div class="result-box fancy-result">
-                    <h3><span class="fancy-number">✨ {formatted_number} ✨</span></h3>
-                    <p>This is a <strong>FANCY</strong> phone number!</p>
-                    <p><strong>Patterns detected:</strong></p>
-                    <ul>
-                        {"".join([f"<li>{pattern}</li>" for pattern in patterns])}
-                    </ul>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # Show some examples of similar fancy numbers
-                st.markdown("### Similar Fancy Number Examples:")
-                examples = [
-                    "347-555-6666", "501-530-3030", "707-500-0001", 
-                    "131-726-11666", "167-889-99999", "146-979-90000",
-                    "192-939-29933", "161-744-77575", "131-628-59999",
-                    "133-228-66688", "158-538-28288", "192-969-36363",
-                    "140-777-77370", "133-226-17777", "195-999-90008",
-                    "170-290-88077", "150-320-77066", "180-250-99033"
-                ]
-                st.write(", ".join(examples[:5]))
-                st.write(", ".join(examples[5:10]))
-                st.write(", ".join(examples[10:15]))
-                st.write(", ".join(examples[15:]))
-            else:
-                st.markdown(f"""
-                <div class="result-box normal-result">
-                    <h3><span class="normal-number">{formatted_number}</span></h3>
-                    <p>This is a <strong>normal</strong> phone number.</p>
-                    <p><strong>Analysis:</strong> {patterns[0]}</p>
-                </div>
-                """, unsafe_allow_html=True)
-    
-    # Batch checking option
-    st.markdown("---")
-    st.subheader("📁 Batch Check Phone Numbers")
-    
-    uploaded_file = st.file_uploader("Upload a CSV or text file with phone numbers (one per line)", 
-                                    type=["csv", "txt"])
-    
-    if uploaded_file:
-        try:
-            # Read the file
-            if uploaded_file.name.endswith('.csv'):
-                df = pd.read_csv(uploaded_file)
-                # Assume first column contains phone numbers
-                phone_numbers = df.iloc[:, 0].astype(str).tolist()
-            else:  # txt file
-                phone_numbers = [line.decode('utf-8').strip() for line in uploaded_file.readlines()]
-            
-            if phone_numbers:
-                st.success(f"✅ Successfully loaded {len(phone_numbers)} phone numbers")
-                
-                # Analyze all numbers
-                results = []
-                for number in phone_numbers:
-                    is_fancy, patterns = is_fancy_number(number)
-                    results.append({
-                        "Phone Number": number,
-                        "Fancy": "Yes" if is_fancy else "No",
-                        "Patterns": ", ".join(patterns) if is_fancy else "Normal"
-                    })
-                
-                # Create a dataframe with results
-                results_df = pd.DataFrame(results)
-                
-                # Display results
-                st.dataframe(results_df, use_container_width=True)
-                
-                # Download button
-                csv = results_df.to_csv(index=False)
-                st.download_button(
-                    label="📥 Download Results",
-                    data=csv,
-                    file_name="fancy_number_results.csv",
-                    mime="text/csv"
-                )
-                
-                # Show summary statistics
-                fancy_count = results_df[results_df["Fancy"] == "Yes"].shape[0]
-                st.markdown(f"""
-                **Summary:**
-                - Total numbers checked: {len(results_df)}
-                - Fancy numbers found: {fancy_count} ({fancy_count/len(results_df):.1%})
-                - Normal numbers: {len(results_df) - fancy_count} ({(len(results_df) - fancy_count)/len(results_df):.1%})
-                """)
-        
-        except Exception as e:
-            st.error(f"Error processing file: {str(e)}")
+            # Show examples of similar fancy numbers
+            st.markdown("### Similar Fancy Number Examples:")
+            examples = [
+                "555-555-5555", "123-456-7890", "987-654-3210",
+                "111-111-1111", "170-290-88077", "088-088-0888",
+                "123-321-1234", "456-654-4567", "999-999-9999"
+            ]
+            st.write(", ".join(examples[:5]))
+            st.write(", ".join(examples[5:]))
+        else:
+            st.markdown(f"""
+            <div class="result-box normal-result">
+                <h3><span class="normal-number">{formatted_number}</span></h3>
+                <p>This is a <strong>normal</strong> phone number.</p>
+                <p><strong>Analysis:</strong> {pattern}</p>
+            </div>
+            """, unsafe_allow_html=True)
