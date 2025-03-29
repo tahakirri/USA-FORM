@@ -48,7 +48,7 @@ def is_fancy_number(phone_number):
     
     # Length validation
     if len(clean_number) == 11 and clean_number.startswith('1'):
-        clean_number = clean_number[1:]  # Remove country code
+        clean_number = clean_number[1:]  # Remove country code for analysis
     elif len(clean_number) != 10:
         return False, "Invalid length"
     
@@ -131,6 +131,61 @@ def is_fancy_number(phone_number):
         if all(int(chunk[j]) == int(chunk[j-1]) - 1 for j in range(1, 4)):
             patterns_found.append(f"Descending sequence ({chunk})")
     
+    # 10. NEW: Check for repeated 2-digit patterns in the last 6+ digits
+    last_six = clean_number[-6:]
+    last_eight = clean_number[-8:] if len(clean_number) >= 8 else ""
+    
+    # Check for patterns like 828288 (in 15853828288)
+    two_digit_repeat_match = re.search(r'(\d\d)\1+', last_six)
+    if two_digit_repeat_match:
+        patterns_found.append(f"Repeating 2-digit pattern ({two_digit_repeat_match.group()})")
+    
+    # 11. NEW: Check for alternating digit patterns (like 5853828288, 9296936363)
+    # Last 6 digits check for alternating patterns
+    if re.search(r'(\d\d)(\d\d)(\1|\2)+', last_six):
+        patterns_found.append(f"Alternating pattern in last digits ({last_six})")
+    
+    # 12. NEW: Check for patterns like 03030 (in 15015303030)
+    if len(last_six) >= 5:
+        pattern_match = re.search(r'(\d\d)\1+\d?', last_six)
+        if pattern_match:
+            patterns_found.append(f"Repeating digit pair pattern ({pattern_match.group()})")
+    
+    # 13. NEW: Check for patterns where the same 2 digits repeat 3 or more times
+    for i in range(10):
+        for j in range(10):
+            pattern = f"{i}{j}" * 3  # e.g., "030303" or "121212"
+            if pattern in clean_number:
+                patterns_found.append(f"Repeating digit pair ({i}{j}) pattern")
+    
+    # 14. NEW: Check for 3-digit pairs that alternate or repeat
+    if len(last_eight) >= 6:
+        for i in range(len(last_eight) - 5):
+            first_three = last_eight[i:i+3]
+            second_three = last_eight[i+3:i+6]
+            # Look for repeated patterns or 3-digit blocks that are related
+            if first_three == second_three:
+                patterns_found.append(f"Repeating 3-digit blocks ({first_three})")
+            # Check if first two digits in both blocks match
+            elif first_three[:2] == second_three[:2]:
+                patterns_found.append(f"Pattern with repeating prefix ({first_three[:2]})")
+            # Check if last two digits in both blocks match
+            elif first_three[1:] == second_three[1:]:
+                patterns_found.append(f"Pattern with repeating suffix ({first_three[1:]})")
+    
+    # 15. NEW: Check the last 4-5 digits for repeating patterns like XYXY
+    last_five = clean_number[-5:]
+    last_four = clean_number[-4:]
+    
+    # Check for XYXY pattern in last 4 digits (e.g., 3636)
+    if len(last_four) == 4 and last_four[0:2] == last_four[2:4]:
+        patterns_found.append(f"XYXY pattern in last 4 digits ({last_four})")
+    
+    # Check for repeated digits in the last 5 digits (e.g., 30303)
+    if len(last_five) == 5:
+        if last_five[0:2] == last_five[2:4] or last_five[1:3] == last_five[3:5]:
+            patterns_found.append(f"Repeating pattern in last 5 digits ({last_five})")
+    
     # Return result
     if patterns_found:
         return True, ", ".join(patterns_found)
@@ -142,7 +197,7 @@ st.header("🔢 Fancy Number Checker")
 st.subheader("Check if your phone number has a fancy pattern")
 
 phone_input = st.text_input("📱 Enter Phone Number (10/11 digits)", 
-                          placeholder="e.g., 18147900900 or 16463880888")
+                          placeholder="e.g., 18147900900 or 19296936363")
 
 col1, col2 = st.columns([1, 2])
 with col1:
@@ -200,9 +255,29 @@ with col2:
     - 32-42-52 (Pattern pairs)
     - 01-01-01 (Repeated pairs)
     
+    #### Advanced patterns:
+    - Repeating 2-digit patterns (828288)
+    - Alternating digits (9296936363)
+    - Repeating pairs with final digit (303030)
+    - XYXY patterns in last digits (3636)
+    
     #### Exceptional cases:
     - 7900000123 (Contains quad zeros)
     - 7900007555 (Special pattern with triple 5s)
     - 7898789555 (Rhythmic pattern)
     - 7999004455 (Double-double pattern)
     """)
+
+# Optional: Debug testing for specific numbers
+debug_mode = False
+if debug_mode:
+    test_numbers = [
+        "15853828288",
+        "19296936363",
+        "15015303030"
+    ]
+    
+    st.markdown("### Debug Testing")
+    for number in test_numbers:
+        is_fancy, pattern = is_fancy_number(number)
+        st.write(f"Number: {number} - Fancy: {is_fancy} - Pattern: {pattern}")
