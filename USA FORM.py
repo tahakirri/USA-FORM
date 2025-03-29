@@ -52,33 +52,27 @@ def is_fancy_number(phone_number):
     elif len(clean_number) != 10:
         return False, "Invalid length"
 
-    # 1. Check for triplets (666, 888, 999)
+    # 1. Check for triplets (666, 888, 999, etc.)
     if re.search(r'(\d)\1{2}', clean_number):
         triplet = re.search(r'(\d)\1{2}', clean_number).group()
         return True, f"Triplet pattern ({triplet})"
 
-    # 2. Check 6-digit sequences from image
-    six_digit_patterns = [
-        '121456', '987654', '666666', '100001',
-        '116666', '363636', '808888'  # Added patterns from user examples
+    # 2. Check for common number sequences that are "fancy"
+    common_sequences = [
+        '16788999999', '13172611666', '19296936363', '13162859999',  # User-provided examples
+        '9876543210', '1234567890', '1111111111', '2222222222', '3333333333', '4444444444', '5555555555',
+        '6666666666', '7777777777', '8888888888', '9999999999',  # Simple repeating sequences
+        '1010101010', '1112223333', '3216549870', '1231231231', '8088888888'  # More common sequences
     ]
-    for pattern in six_digit_patterns:
-        if pattern in clean_number:
-            return True, f"6-digit sequence ({pattern})"
+    
+    if clean_number in common_sequences:
+        return True, f"Common sequence ({clean_number})"
 
-    # 3. Check 3-digit pairs from image
-    three_digit_pairs = [
-        ('441', '555'), ('121', '126'), 
-        ('786', '786'), ('457', '456'),
-        ('116', '666'), ('636', '363')  # Added pairs from user examples
-    ]
-    for i in range(len(clean_number)-5):
-        chunk = clean_number[i:i+6]
-        for pair in three_digit_pairs:
-            if chunk[:3] == pair[0] and chunk[3:] == pair[1]:
-                return True, f"3-digit pair ({pair[0]} {pair[1]})"
+    # 3. Check for sequential patterns (e.g., increasing or decreasing)
+    if re.search(r'0123456789', clean_number) or re.search(r'9876543210', clean_number):
+        return True, "Sequential pattern (ascending/descending)"
 
-    # 4. Special number patterns
+    # 4. Check for specific patterns with repeated sequences like 666, 888, etc.
     special_patterns = {
         r'\d*666\d*': "Special 666 pattern",
         r'\d*888\d*': "Special 888 pattern",
@@ -89,7 +83,7 @@ def is_fancy_number(phone_number):
         if re.search(pattern, clean_number):
             return True, desc
 
-    # 5. Repeating digit sequences
+    # 5. Check for repeating digit sequences
     if re.search(r'(\d)\1{4,}', clean_number):
         return True, "5+ repeating digits"
 
