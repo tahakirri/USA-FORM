@@ -57,8 +57,21 @@ def is_fancy_number(phone_number):
     # Store all patterns found
     patterns_found = []
     
-    # 1. Check for 5-digit sequences within the last 6 digits
-    # Only consider if they are in the first or last 5 digits of the 6-digit segment
+    # 1. Check for sequences of 4+ identical digits
+    # This will catch cases like 116666 (quad 6s)
+    for i in range(len(last_six) - 3):
+        segment = last_six[i:i+4]
+        if len(set(segment)) == 1:  # All digits same
+            # Only count the longest sequence to avoid duplicate reports
+            if i == 0 or last_six[i-1] != segment[0]:
+                # Check how long this sequence continues
+                j = i + 4
+                while j < len(last_six) and last_six[j] == segment[0]:
+                    j += 1
+                seq_length = j - i
+                patterns_found.append(f"{seq_length} repeated {segment[0]}s ({last_six[i:j]})")
+    
+    # 2. Check for 5-digit sequences within the last 6 digits
     for i in [0, 1]:  # Only check first and second positions in 6-digit segment
         segment = last_six[i:i+5]
         
@@ -70,40 +83,36 @@ def is_fancy_number(phone_number):
         if segment in "9876543210":
             patterns_found.append(f"5-digit descending sequence ({segment})")
         
-        # Repeated digits (e.g., 66666)
-        if len(set(segment)) == 1:
-            patterns_found.append(f"5 repeated digits ({segment})")
-        
         # Mirrored patterns (e.g., 12321)
         if segment == segment[::-1]:
             patterns_found.append(f"Mirrored 5-digit pattern ({segment})")
     
-    # 2. Check for 3-digit sequences
-    # Only consider if they are significant patterns (not just any triplet)
-    # Repeated triplets (e.g., 123123)
+    # 3. Check for 3-digit sequences with special patterns
     if len(last_six) == 6:
         first_three = last_six[:3]
         second_three = last_six[3:]
+        
+        # Repeated triplets (e.g., 123123)
         if first_three == second_three:
             patterns_found.append(f"Repeated 3-digit pattern ({first_three}-{second_three})")
         
-        # Check for mirrored triplets (e.g., 123321)
+        # Mirrored triplets (e.g., 123321)
         if last_six == last_six[::-1]:
             patterns_found.append(f"Perfect mirrored pattern ({last_six})")
+        
+        # Sequential triplets (e.g., 123123 where 123 is sequential)
+        if (first_three in "0123456789" or first_three in "9876543210") and first_three == second_three:
+            patterns_found.append(f"Sequential repeated triplets ({first_three}-{second_three})")
     
-    # 3. Check for 4-digit sequences
+    # 4. Check for special 4-digit patterns
     for i in range(3):  # Check all possible 4-digit segments in last 6 digits
         segment = last_six[i:i+4]
-        
-        # All same digit (e.g., 4444)
-        if len(set(segment)) == 1:
-            patterns_found.append(f"4 repeated digits ({segment})")
         
         # XYXY pattern (e.g., 1212)
         if segment[:2] == segment[2:4] and segment[0] != segment[1]:
             patterns_found.append(f"XYXY pattern ({segment})")
     
-    # 4. Check for special 6-digit patterns
+    # 5. Check for special 6-digit patterns
     # All same digit (e.g., 666666)
     if len(set(last_six)) == 1:
         patterns_found.append(f"6 repeated digits ({last_six})")
@@ -112,19 +121,12 @@ def is_fancy_number(phone_number):
     if all(last_six[i] == last_six[i%2] for i in range(6)):
         patterns_found.append(f"Perfect alternating pattern ({last_six})")
     
-    # 5. Check for double triplets (e.g., 111222, 333444)
+    # 6. Check for double triplets (e.g., 111222, 333444)
     if len(last_six) == 6:
         first_triplet = last_six[:3]
         second_triplet = last_six[3:]
         if len(set(first_triplet)) == 1 and len(set(second_triplet)) == 1 and first_triplet[0] != second_triplet[0]:
             patterns_found.append(f"Double triplets ({first_triplet}-{second_triplet})")
-    
-    # 6. Check for sequential triplets (e.g., 123123)
-    if len(last_six) == 6:
-        first_triplet = last_six[:3]
-        second_triplet = last_six[3:]
-        if (first_triplet in "0123456789" or first_triplet in "9876543210") and first_triplet == second_triplet:
-            patterns_found.append(f"Sequential repeated triplets ({first_triplet}-{second_triplet})")
     
     # 7. Check for 3+3 mirrored (e.g., 123321)
     if len(last_six) == 6:
@@ -135,13 +137,18 @@ def is_fancy_number(phone_number):
     if patterns_found:
         # Filter out weak patterns that shouldn't qualify as fancy
         strong_patterns = [p for p in patterns_found if 
-                          not ("3 repeated digits" in p) and  # Exclude simple triplets
+                          not ("3 repeated digits" in p and not ("3 repeated" in p and "111" in p)) and  # Allow 111 but not other triplets alone
                           not ("XYXY pattern" in p and len(p.split()[2]) < 4)]  # Exclude short XYXY
         
         if strong_patterns:
-            return True, ", ".join(strong_patterns)
+            # For numbers with multiple patterns, show the most significant one first
+            priority_patterns = sorted(strong_patterns, 
+                                     key=lambda x: -len(x.split()[1]) if "repeated" in x else 0)
+            return True, ", ".join(priority_patterns)
     
     return False, "No fancy pattern detected"
+
+# Streamlit UI (remainder of the code is the same as before)
 
 # Streamlit UI
 st.header("🔢 Lycamobile Fancy Number Checker")
