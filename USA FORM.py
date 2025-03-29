@@ -43,116 +43,119 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-def is_lycamobile_fancy_number(phone_number):
+def is_fancy_number(phone_number):
     clean_number = re.sub(r'[^\d]', '', phone_number)
     
     # Length validation
     if len(clean_number) == 11 and clean_number.startswith('1'):
         clean_number = clean_number[1:]  # Remove country code for analysis
     elif len(clean_number) != 10:
-        return False, "Invalid length (must be 10 or 11 digits)"
+        return False, "Invalid length"
     
-    # Focus only on the last 6 digits for Lycamobile classification
+    # According to Lycamobile policy, only analyze the last 6 digits
     last_six = clean_number[-6:]
     
     # Store all patterns found
     patterns_found = []
     
-    # 1. Check for 6-digit sequences (must match exactly)
-    # Ascending sequence (e.g., 123456, 234567)
-    if all(int(last_six[i]) == int(last_six[i-1]) + 1 for i in range(1, 6)):
-        patterns_found.append("6-digit ascending sequence")
+    # 1. Check for 5-digit sequences within the last 6 digits
+    # Ascending sequence (e.g., 12345)
+    if any(last_six[i:i+5] in "0123456789" for i in range(2)):
+        patterns_found.append(f"5-digit ascending sequence in last 6 digits ({last_six})")
     
-    # Descending sequence (e.g., 987654, 876543)
-    if all(int(last_six[i]) == int(last_six[i-1]) - 1 for i in range(1, 6)):
-        patterns_found.append("6-digit descending sequence")
+    # Descending sequence (e.g., 98765)
+    if any(last_six[i:i+5] in "9876543210" for i in range(2)):
+        patterns_found.append(f"5-digit descending sequence in last 6 digits ({last_six})")
     
-    # All identical digits (e.g., 666666, 999999)
-    if len(set(last_six)) == 1:
-        patterns_found.append("6-digit repeated digits")
+    # Repeated digits (e.g., 66666)
+    five_repeat = re.search(r'(\d)\1{4}', last_six)
+    if five_repeat:
+        patterns_found.append(f"5 repeated digits ({five_repeat.group()})")
     
-    # Special patterns (e.g., 100001)
-    special_patterns = {
-        '100001': "Special pattern (100001)",
-        '123123': "Repeating block (123123)",
-        '345543': "Mirror sequence (345543)",
-        '122221': "Palindromic structure (122221)",
-        '808808': "Mirrored block (808808)"
-    }
-    for pattern, desc in special_patterns.items():
-        if pattern in last_six:
-            patterns_found.append(desc)
+    # Mirrored patterns (e.g., 12321)
+    for i in range(2):
+        if i+5 <= len(last_six):
+            segment = last_six[i:i+5]
+            if segment == segment[::-1]:
+                patterns_found.append(f"Mirrored 5-digit pattern ({segment})")
     
-    # 2. Check for 3-digit sequences (must be two consecutive 3-digit patterns)
-    # Repeated triplets (e.g., 444555, 666777)
-    if len(last_six) >= 6:
+    # 2. Check for 3-digit sequences
+    # Repeated triplets (e.g., 444555, 786786)
+    if len(last_six) == 6:
         first_three = last_six[:3]
         second_three = last_six[3:]
-        
-        # Same triplet repeated (e.g., 444444)
-        if first_three == second_three and len(set(first_three)) == 1:
-            patterns_found.append("Repeated identical triplet")
-        
-        # Related triplets (e.g., 444555, 121122)
-        if (len(set(first_three)) == 1 and len(set(second_three)) == 1 and first_three != second_three:
-            patterns_found.append(f"Paired triplets ({first_three}-{second_three})")
-        
-        # Sequential triplets (e.g., 123456 would be 123-456)
-        if (all(int(first_three[i]) == int(first_three[i-1]) + 1 for i in range(1, 3)) and \
-           (all(int(second_three[i]) == int(second_three[i-1]) + 1 for i in range(1, 3)) and \
-           int(second_three[0]) == int(first_three[-1]) + 1:
-            patterns_found.append("Sequential triplets forming 6-digit sequence")
+        if first_three == second_three:
+            patterns_found.append(f"Repeated 3-digit pattern ({first_three}-{second_three})")
+        # Closely related patterns (e.g., 121122, 457456)
+        elif (first_three[:2] == second_three[:2] or 
+              first_three[1:] == second_three[1:] or
+              first_three[:1] + first_three[2:] == second_three[:1] + second_three[2:]):
+            patterns_found.append(f"Related 3-digit pattern ({first_three}-{second_three})")
     
-    # 3. Check for 2-digit sequences (three consecutive 2-digit patterns)
-    if len(last_six) >= 6:
-        # Extract three 2-digit pairs
+    # 3. Check for 2-digit sequences
+    # Repeated or incremental pairs (e.g., 111213, 202020, 010101, 324252)
+    if len(last_six) == 6:
         pairs = [last_six[i:i+2] for i in range(0, 6, 2)]
         
-        # All pairs identical (e.g., 121212)
-        if len(set(pairs)) == 1:
-            patterns_found.append("Repeated 2-digit sequence")
-        
-        # Ascending pairs (e.g., 111213)
-        if all(int(pairs[i]) == int(pairs[i-1]) + 1 for i in range(1, 3)):
-            patterns_found.append("Ascending 2-digit sequence")
-        
-        # Related pairs (e.g., 202020, 010101)
+        # Repeated pairs (202020, 010101)
         if pairs[0] == pairs[1] == pairs[2]:
-            patterns_found.append("Identical 2-digit sequence")
+            patterns_found.append(f"Repeated 2-digit sequence ({pairs[0]}-{pairs[1]}-{pairs[2]})")
         
-        # Pattern pairs (e.g., 324252)
-        if all(pairs[i][0] == pairs[0][0] for i in range(1, 3)) and \
-           all(int(pairs[i][1]) == int(pairs[i-1][1]) + 1 for i in range(1, 3)):
-            patterns_found.append("Patterned 2-digit sequence")
+        # Incremental pairs (e.g., 111213, 324252)
+        try:
+            if (int(pairs[1]) == int(pairs[0]) + 1 and int(pairs[2]) == int(pairs[1]) + 1) or \
+               (pairs[0][0] == pairs[1][0] == pairs[2][0] and 
+                int(pairs[0][1]) + 1 == int(pairs[1][1]) and 
+                int(pairs[1][1]) + 1 == int(pairs[2][1])):
+                patterns_found.append(f"Incremental 2-digit sequence ({pairs[0]}-{pairs[1]}-{pairs[2]})")
+        except ValueError:
+            pass  # Skip if conversion to int fails
     
-    # 4. Check for mirror sequences and palindromic structures
-    # Full mirror (e.g., 345543)
+    # 4. Check for mirror sequences and symmetrical patterns
+    # Palindromic structure (e.g., 345543, 122221)
     if last_six == last_six[::-1]:
-        patterns_found.append("Perfect mirror/palindrome")
+        patterns_found.append(f"Palindromic pattern ({last_six})")
     
-    # Partial mirror (e.g., 808808)
-    if len(last_six) == 6 and last_six[:3] == last_six[3:][::-1]:
-        patterns_found.append("Mirrored 3-digit block")
+    # Check for symmetrical patterns like 808808
+    if len(last_six) == 6:
+        if last_six[:3] == last_six[3:]:
+            patterns_found.append(f"Symmetrical pattern ({last_six[:3]}-{last_six[3:]})")
     
-    # 5. Check for repeating block patterns (e.g., 345345, 123123)
-    if len(last_six) == 6 and last_six[:3] == last_six[3:]:
-        patterns_found.append("Repeating 3-digit block")
+    # 5. Repeating block patterns
+    # Numbers that repeat a block of three or more digits (e.g., 345345, 123123)
+    # Already covered in the 3-digit sequences check
     
-    # 6. Check for exceptional cases that might need verification
-    exceptional_cases = {
-        '088077': "Double-double pattern (088077)",
-        '090909': "Alternating pattern with zero (090909)",
-        '070707': "Alternating pattern with zero (070707)"
-    }
-    for pattern, desc in exceptional_cases.items():
-        if pattern in last_six:
-            patterns_found.append(desc)
+    # 6. Check for triplets (e.g., 111, 222, 333)
+    triplet_matches = re.finditer(r'(\d)\1{2}', last_six)
+    for match in triplet_matches:
+        patterns_found.append(f"Triplet pattern ({match.group()})")
+    
+    # 7. Check for quad patterns (4 identical digits in a row)
+    quad_matches = re.finditer(r'(\d)\1{3}', last_six)
+    for match in quad_matches:
+        patterns_found.append(f"Quad digit pattern ({match.group()})")
+    
+    # 8. Check for double-doubles (e.g., 1122, 5566)
+    double_double_matches = re.finditer(r'(\d)\1(\d)\2', last_six)
+    for match in double_double_matches:
+        patterns_found.append(f"Double-double pattern ({match.group()})")
+    
+    # 9. Check for XYXY pattern (e.g., 3636)
+    for i in range(len(last_six) - 3):
+        segment = last_six[i:i+4]
+        if segment[:2] == segment[2:4] and segment[0] != segment[1]:
+            patterns_found.append(f"XYXY pattern ({segment})")
+    
+    # 10. Check for alternating digits (e.g., 525252)
+    if len(last_six) >= 6:
+        if all(last_six[i] == last_six[i%2] for i in range(6)):
+            patterns_found.append(f"Alternating digit pattern ({last_six})")
     
     # Return result based on patterns found
     if patterns_found:
         return True, ", ".join(patterns_found)
     else:
-        return False, "No Lycamobile fancy pattern detected in last 6 digits"
+        return False, "No fancy pattern detected"
 
 # Streamlit UI
 st.header("🔢 Lycamobile Fancy Number Checker")
@@ -167,7 +170,7 @@ with col1:
         if not phone_input:
             st.warning("Please enter a phone number")
         else:
-            is_fancy, pattern = is_lycamobile_fancy_number(phone_input)
+            is_fancy, pattern = is_fancy_number(phone_input)
             clean_number = re.sub(r'[^\d]', '', phone_input)
             
             # Format display
@@ -178,19 +181,35 @@ with col1:
             else:
                 formatted_num = clean_number
 
+            # Highlight the last 6 digits specifically
+            if len(clean_number) >= 6:
+                last_six = clean_number[-6:]
+                if len(clean_number) == 10:
+                    formatted_last_six = f"{last_six[:3]}-{last_six[3:]}"
+                    formatted_prefix = f"{clean_number[:4]}-"
+                elif len(clean_number) == 11:
+                    formatted_last_six = f"{last_six[:3]}-{last_six[3:]}"
+                    formatted_prefix = f"1-{clean_number[1:5]}-"
+                else:
+                    formatted_last_six = last_six
+                    formatted_prefix = clean_number[:-6]
+            else:
+                formatted_last_six = clean_number
+                formatted_prefix = ""
+                
             if is_fancy:
                 st.markdown(f"""
                 <div class="result-box fancy-result">
-                    <h3><span class="fancy-number">✨ {formatted_num} ✨</span></h3>
-                    <p>LYCAMOBILE FANCY/GOLDEN NUMBER DETECTED!</p>
-                    <p><strong>Pattern in last 6 digits:</strong> {pattern}</p>
+                    <h3>{formatted_prefix}<span class="fancy-number">✨ {formatted_last_six} ✨</span></h3>
+                    <p>FANCY/GOLDEN NUMBER DETECTED!</p>
+                    <p><strong>Pattern:</strong> {pattern}</p>
                 </div>
                 """, unsafe_allow_html=True)
             else:
                 st.markdown(f"""
                 <div class="result-box normal-result">
                     <h3><span class="normal-number">{formatted_num}</span></h3>
-                    <p>Not a Lycamobile Fancy/Golden number</p>
+                    <p>Regular number</p>
                     <p><strong>Reason:</strong> {pattern}</p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -199,59 +218,49 @@ with col2:
     st.markdown("""
     ### Lycamobile Fancy/Golden Number Patterns
     
-    #### 6-digit sequence patterns:
-    - **123456** (Ascending sequence)
-    - **987654** (Descending sequence)
-    - **666666** (Repeated digits)
-    - **100001** (Special pattern)
-    - **345543** (Mirror sequence)
-    - **122221** (Palindromic structure)
-    - **808808** (Mirrored block)
+    According to Lycamobile's classification policy, only the **last six digits** are analyzed for determining if a number is fancy/golden.
     
-    #### 3-digit sequence patterns:
-    - **444555** (Paired triplets)
-    - **121122** (Related triplets)
-    - **786786** (Repeated triplet)
-    - **457456** (Sequential triplets)
+    #### 5-digit Sequences:
+    - Consecutive ascending (e.g., 12345)
+    - Consecutive descending (e.g., 98765)
+    - Repeated digits (e.g., 66666)
+    - Mirrored patterns (e.g., 12321)
     
-    #### 2-digit sequence patterns:
-    - **111213** (Ascending pairs)
-    - **202020** (Repeated pairs)
-    - **010101** (Repeated pairs)
-    - **324252** (Patterned pairs)
+    #### 3-digit Sequences:
+    - Repeated triplets (e.g., 444555)
+    - Related triplets (e.g., 121122, 786786, 457456)
     
-    #### Mirror and palindromic patterns:
-    - **345543** (Perfect mirror)
-    - **122221** (Palindrome)
-    - **808808** (Mirrored block)
+    #### 2-digit Sequences:
+    - Repeated pairs (e.g., 202020, 010101)
+    - Incremental pairs (e.g., 111213, 324252)
     
-    #### Repeating block patterns:
-    - **123123** (Repeating 3-digit block)
-    - **456456** (Repeating 3-digit block)
+    #### Mirror and Symmetrical Patterns:
+    - Palindromic structures (e.g., 345543, 122221)
+    - Symmetrical patterns (e.g., 808808)
     
-    #### Exceptional cases:
-    - **088077** (Double-double pattern)
-    - **090909** (Alternating pattern)
-    - **070707** (Alternating pattern)
+    #### Repeating Block Patterns:
+    - Repeating blocks of digits (e.g., 345345, 123123)
     
-    *Note: Only the last 6 digits are analyzed for fancy number classification.*
+    #### Other Recognized Patterns:
+    - Triplets of same digit (e.g., 111, 222)
+    - Quad digits (e.g., 9999)
+    - Double-doubles (e.g., 1122, 5566)
+    - Alternating digits (e.g., 525252)
+    - XYXY patterns (e.g., 3636)
     """)
 
 # Optional: Debug testing for specific numbers
 debug_mode = False
 if debug_mode:
     test_numbers = [
-        "1234567890",  # Ascending sequence
-        "9876543210",  # Descending sequence
-        "5555555555",  # Repeated digits
-        "18080880888", # Mirrored block
-        "17029088077", # Double-double pattern
-        "12408692892", # Should NOT be fancy
-        "15853828288",
-        "19296936363"
+        "12408692892",  # Should NOT be fancy
+        "12345678901",  # Last 6 = 678901
+        "15853123123",  # Last 6 = 123123 (repeating block)
+        "14085555555",  # Last 6 = 555555 (all same digit)
+        "17025252525"   # Last 6 = 525252 (alternating)
     ]
     
     st.markdown("### Debug Testing")
     for number in test_numbers:
-        is_fancy, pattern = is_lycamobile_fancy_number(number)
+        is_fancy, pattern = is_fancy_number(number)
         st.write(f"Number: {number} - Fancy: {is_fancy} - Pattern: {pattern}")
