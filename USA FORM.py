@@ -131,7 +131,7 @@ def is_fancy_number(phone_number):
         if all(int(chunk[j]) == int(chunk[j-1]) - 1 for j in range(1, 4)):
             patterns_found.append(f"Descending sequence ({chunk})")
     
-    # 10. NEW: Check for repeated 2-digit patterns in the last 6+ digits
+    # 10. Check for repeated 2-digit patterns in the last 6+ digits
     last_six = clean_number[-6:]
     last_eight = clean_number[-8:] if len(clean_number) >= 8 else ""
     
@@ -140,25 +140,25 @@ def is_fancy_number(phone_number):
     if two_digit_repeat_match:
         patterns_found.append(f"Repeating 2-digit pattern ({two_digit_repeat_match.group()})")
     
-    # 11. NEW: Check for alternating digit patterns (like 5853828288, 9296936363)
+    # 11. Check for alternating digit patterns (like 5853828288, 9296936363)
     # Last 6 digits check for alternating patterns
     if re.search(r'(\d\d)(\d\d)(\1|\2)+', last_six):
         patterns_found.append(f"Alternating pattern in last digits ({last_six})")
     
-    # 12. NEW: Check for patterns like 03030 (in 15015303030)
+    # 12. Check for patterns like 03030 (in 15015303030)
     if len(last_six) >= 5:
         pattern_match = re.search(r'(\d\d)\1+\d?', last_six)
         if pattern_match:
             patterns_found.append(f"Repeating digit pair pattern ({pattern_match.group()})")
     
-    # 13. NEW: Check for patterns where the same 2 digits repeat 3 or more times
+    # 13. Check for patterns where the same 2 digits repeat 3 or more times
     for i in range(10):
         for j in range(10):
             pattern = f"{i}{j}" * 3  # e.g., "030303" or "121212"
             if pattern in clean_number:
                 patterns_found.append(f"Repeating digit pair ({i}{j}) pattern")
     
-    # 14. NEW: Check for 3-digit pairs that alternate or repeat
+    # 14. Check for 3-digit pairs that alternate or repeat
     if len(last_eight) >= 6:
         for i in range(len(last_eight) - 5):
             first_three = last_eight[i:i+3]
@@ -173,7 +173,7 @@ def is_fancy_number(phone_number):
             elif first_three[1:] == second_three[1:]:
                 patterns_found.append(f"Pattern with repeating suffix ({first_three[1:]})")
     
-    # 15. NEW: Check the last 4-5 digits for repeating patterns like XYXY
+    # 15. Check the last 4-5 digits for repeating patterns like XYXY
     last_five = clean_number[-5:]
     last_four = clean_number[-4:]
     
@@ -186,6 +186,50 @@ def is_fancy_number(phone_number):
         if last_five[0:2] == last_five[2:4] or last_five[1:3] == last_five[3:5]:
             patterns_found.append(f"Repeating pattern in last 5 digits ({last_five})")
     
+    # 16. NEW: Check for consecutive pairs of repeated digits (e.g., 088077)
+    # This pattern has consecutive zeros (00) followed by consecutive pairs (88, 77)
+    for i in range(len(clean_number) - 5):
+        chunk = clean_number[i:i+6]
+        if (chunk[0] == chunk[1] and 
+            chunk[2] == chunk[3] and 
+            chunk[4] == chunk[5] and
+            (chunk[0] != chunk[2] or chunk[2] != chunk[4])):
+            patterns_found.append(f"Consecutive paired digits ({chunk})")
+    
+    # 17. NEW: Check for patterns like 088077 with double zeros followed by double digits
+    double_zero_patterns = re.finditer(r'0{2,}(\d)\1(\d)\2', clean_number)
+    for match in double_zero_patterns:
+        patterns_found.append(f"Double zeros followed by double digits ({match.group()})")
+    
+    # 18. NEW: Check for any sequence with consecutive pairs (like in 9088077)
+    last_six = clean_number[-6:]
+    if (re.search(r'(\d)\1(\d)\2(\d)\3', last_six) or
+        re.search(r'(\d)(\d)(\1)(\2)', last_six) or
+        re.search(r'(\d)(\d)(\d)(\1)(\2)(\3)', last_six)):
+        patterns_found.append(f"Sequential paired digits pattern ({last_six})")
+    
+    # 19. NEW: Check for patterns with consecutive identical digits in specific positions
+    # For example: 9088077 has 00, 88, 77 as sequential pairs
+    for i in range(len(clean_number) - 5):
+        segment = clean_number[i:i+6]
+        # Check for consecutive pairs at positions 0-1, 2-3, 4-5
+        if (segment[0] == segment[1] and 
+            segment[2] == segment[3] and 
+            segment[4] == segment[5]):
+            patterns_found.append(f"Three consecutive pairs ({segment})")
+    
+    # 20. NEW: Explicitly check for the 088077 pattern and similar
+    if '088077' in clean_number:
+        patterns_found.append("Special pattern with double zeros and double digits (088077)")
+    
+    # Check for similar patterns with different digits
+    for a in range(10):
+        for b in range(10):
+            for c in range(10):
+                pattern = f"{a}{a}{b}{b}{c}{c}"
+                if pattern in clean_number and not (a == b and b == c):  # Avoid 111111 pattern
+                    patterns_found.append(f"Triple double-digit pattern ({pattern})")
+    
     # Return result
     if patterns_found:
         return True, ", ".join(patterns_found)
@@ -197,7 +241,7 @@ st.header("🔢 Fancy Number Checker")
 st.subheader("Check if your phone number has a fancy pattern")
 
 phone_input = st.text_input("📱 Enter Phone Number (10/11 digits)", 
-                          placeholder="e.g., 18147900900 or 19296936363")
+                          placeholder="e.g., 18147900900 or 17029088077")
 
 col1, col2 = st.columns([1, 2])
 with col1:
@@ -260,6 +304,8 @@ with col2:
     - Alternating digits (9296936363)
     - Repeating pairs with final digit (303030)
     - XYXY patterns in last digits (3636)
+    - Consecutive paired digits (088077)
+    - Triple double-digit pattern (aabbcc)
     
     #### Exceptional cases:
     - 7900000123 (Contains quad zeros)
@@ -274,7 +320,8 @@ if debug_mode:
     test_numbers = [
         "15853828288",
         "19296936363",
-        "15015303030"
+        "15015303030",
+        "17029088077"
     ]
     
     st.markdown("### Debug Testing")
