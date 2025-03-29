@@ -93,12 +93,16 @@ def is_fancy_number(phone_number):
     if len(set(last_six[:3])) == 1 and len(set(last_six[3:])) == 1:
         patterns_found.append("double triplets")
 
-    # 5. Filter significant patterns
+    # 5. New check: Last 3 identical digits
+    if len(last_six) >= 3 and len(set(last_six[-3:])) == 1:
+        patterns_found.append("last 3 identical digits")
+
+    # 6. Filter significant patterns
     significant_patterns = []
     for pattern in patterns_found:
-        if any(keyword in pattern for keyword in [
-            "4 consecutive", "5-digit", "6 identical",
-            "perfect mirror", "repeated triplets", "double triplets"
+        if any(keyword in pattern.lower() for keyword in [
+            "consecutive", "identical", "ascending",
+            "descending", "mirror", "triplets"
         ]):
             significant_patterns.append(pattern)
 
@@ -165,41 +169,36 @@ with col2:
     st.markdown("""
     ### Lycamobile Fancy/Golden Number Patterns
     
-    According to Lycamobile's classification policy, only the **last six digits** are analyzed for determining if a number is fancy/golden.
+    **New Update:** Now checking last 3 digits specifically!
     
-    #### Strong Patterns (Qualify as Fancy):
-    - 4+ consecutive identical digits (e.g., 116666, 5555)
-    - 5-digit sequences (ascending/descending)
-    - Perfect mirrored numbers (e.g., 123321)
-    - Repeated 3-digit blocks (e.g., 123123)
-    - Double triplets (e.g., 111222)
-    - 6 identical digits
-    
-    #### Weak Patterns (Don't Qualify):
-    - Isolated triplets (e.g., 555 in 555123)
-    - Short sequences without 4+ repetition
-    - Simple repeating pairs (e.g., 1212)
+    #### Qualifying Patterns:
+    1. **4+ Consecutive Digits** (e.g., 116666)
+    2. **Last 3 Identical Digits** (NEW! e.g., 555 in 123555)
+    3. **6 Identical Digits** (e.g., 666666)
+    4. **5-digit Sequences** (ascending/descending)
+    5. **Mirror Patterns** (e.g., 123321)
+    6. **Triplet Patterns** (repeated/double)
     
     #### Examples:
-    - ✅ 116666 (4+ repeats)
-    - ✅ 123456 (ascending)
-    - ✅ 111222 (double triplet)
-    - ❌ 555123 (isolated triplet)
-    - ❌ 121212 (only pairs)
+    - ✅ 116666 (4+ consecutive + last 3 identical)
+    - ✅ 123555 (new last 3 check)
+    - ✅ 555123 (last 3 digits: 123 ≠)
+    - ❌ 16109055580 (only 4 non-consecutive 5s)
     """)
 
 # Debug testing
 if st.checkbox("Show debug examples"):
     test_numbers = [
-        ("13172611666", True),   # Last 6: 116666 (4+ repeats)
-        ("16109055580", False),  # Last 6: 555580 (only 4 repeats)
-        ("1234567890", True),    # Last 6: 456789 (ascending)
-        ("18005555555", True),   # Last 6: 555555 (6 repeats)
-        ("17021212121", False)   # Last 6: 121212 (only pairs)
+        ("13172611666", True),   # Last 6: 116666 (4+ + last 3)
+        ("123456777", True),     # Last 6: 456777 (last 3 777)
+        ("16109055580", False),  # Last 6: 555580 (no patterns)
+        ("18005555555", True),   # 6 identical
+        ("17021212121", False)   # Only pairs
     ]
     
     st.markdown("### Validation Tests")
     for number, expected in test_numbers:
         is_fancy, pattern = is_fancy_number(number)
-        status = "PASS ✅" if is_fancy == expected else "FAIL ❌"
-        st.write(f"{status} {number}: {pattern}")
+        status = "✅ PASS" if is_fancy == expected else "❌ FAIL"
+        color = "#00ff00" if is_fancy == expected else "#ff0000"
+        st.markdown(f"<p style='color:{color}'>{status} {number}: {pattern}</p>", unsafe_allow_html=True)
