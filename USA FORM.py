@@ -937,7 +937,6 @@ else:
         st.title(f"👋 Welcome, {st.session_state.username}")
         st.markdown("---")
         
-        # Navigation options - Fancy Number is now available to all
         nav_options = [
             ("📋 Requests", "requests"),
             ("📊 Dashboard", "dashboard"),
@@ -945,7 +944,7 @@ else:
             ("🖼️ HOLD", "hold"),
             ("❌ Mistakes", "mistakes"),
             ("💬 Chat", "chat"),
-            ("📱 Fancy Number", "fancy_number")  # Available to all users
+            ("📱 Fancy Number", "fancy_number")  # Added Fancy Number section
         ]
         if st.session_state.role == "admin":
             nav_options.append(("⚙️ Admin", "admin"))
