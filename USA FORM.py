@@ -97,12 +97,12 @@ def login_page():
             st.session_state.user_role = "admin"
             st.session_state.logged_in = True
             st.success("Logged in as Admin")
-            st.experimental_rerun()
+            st.rerun()
         elif role == "Agent" and password == "agent123":
             st.session_state.user_role = "agent"
             st.session_state.logged_in = True
             st.success("Logged in as Agent")
-            st.experimental_rerun()
+            st.rerun()
         else:
             st.error("Invalid credentials")
 
@@ -153,7 +153,7 @@ def admin_dashboard():
             st.session_state.current_template = None
             save_templates()
             st.success(f"Template '{selected_template}' deleted!")
-            st.experimental_rerun()
+            st.rerun()
         
         # Edit template
         if st.session_state.current_template:
@@ -299,7 +299,7 @@ def agent_dashboard():
         if st.button("Cancel All Bookings"):
             del st.session_state.agent_bookings[st.session_state.selected_date]
             st.success("All bookings canceled for this date")
-            st.experimental_rerun()
+            st.rerun()
 
 # Display schedule (used by both admin and agent)
 def display_schedule(template):
@@ -353,7 +353,7 @@ def main():
         if st.button("Logout", key="logout"):
             st.session_state.logged_in = False
             st.session_state.user_role = None
-            st.experimental_rerun()
+            st.rerun()
 
 if __name__ == "__main__":
     main()
