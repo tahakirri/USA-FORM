@@ -153,9 +153,11 @@ def admin_dashboard():
     
     # Timezone adjustment
     st.header("Timezone Adjustment")
-    timezone = st.selectbox("Select Timezone:", 
-                           ["GMT", "GMT+1", "GMT+2", "GMT-1", "GMT-2"],
-                           index=0)
+    timezone = st.selectbox(
+        "Select Timezone:",
+        ["GMT", "GMT+1", "GMT+2", "GMT-1", "GMT-2"],
+        index=0
+    )
     
     # Map timezone to offset
     timezone_offsets = {"GMT": 0, "GMT+1": 1, "GMT+2": 2, "GMT-1": -1, "GMT-2": -2}
@@ -167,7 +169,7 @@ def admin_dashboard():
         st.rerun()
     
     # Template management
-    st.header("Template Management")
+     st.header("Template Management")
     
     col1, col2 = st.columns(2)
     
@@ -193,12 +195,13 @@ def admin_dashboard():
             else:
                 st.error("Please enter a template name")
     
-    # Template selection
+    # Template selection - THIS IS THE CORRECTED SECTION
     if st.session_state.templates:
         selected_template = st.selectbox(
             "Select Template to Edit:",
             list(st.session_state.templates.keys()),
             index=0 if not st.session_state.current_template else list(st.session_state.templates.keys()).index(st.session_state.current_template)
+        )
         
         st.session_state.current_template = selected_template
         
@@ -208,6 +211,7 @@ def admin_dashboard():
             save_data()
             st.success(f"Template '{selected_template}' deleted!")
             st.rerun()
+
         
         # Edit template
         if st.session_state.current_template:
