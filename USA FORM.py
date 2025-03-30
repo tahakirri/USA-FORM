@@ -154,7 +154,7 @@ def admin_dashboard():
     # Timezone adjustment
     st.header("Timezone Adjustment")
     timezone = st.selectbox(
-        "Select Timezone:",
+        "Select Timezone:", 
         ["GMT", "GMT+1", "GMT+2", "GMT-1", "GMT-2"],
         index=0
     )
@@ -169,7 +169,7 @@ def admin_dashboard():
         st.rerun()
     
     # Template management
-     st.header("Template Management")
+    st.header("Template Management")
     
     col1, col2 = st.columns(2)
     
