@@ -9,7 +9,7 @@ import io
 import pandas as pd
 
 # --------------------------
-# Database Functions
+# Database Functions (Multi-Group Version)
 # --------------------------
 
 def hash_password(password):
@@ -20,10 +20,12 @@ def authenticate(username, password):
     try:
         cursor = conn.cursor()
         hashed_password = hash_password(password)
-        cursor.execute("SELECT role FROM users WHERE LOWER(username) = LOWER(?) AND password = ?", 
-                      (username, hashed_password))
+        cursor.execute("""
+            SELECT role, group_name FROM users 
+            WHERE LOWER(username) = LOWER(?) AND password = ?
+        """, (username, hashed_password))
         result = cursor.fetchone()
-        return result[0] if result else None
+        return (result[0], result[1]) if result else (None, None)
     finally:
         conn.close()
 
@@ -33,19 +35,28 @@ def init_db():
     try:
         cursor = conn.cursor()
         
-        # Create tables if they don't exist
+        # Create tables with group support
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE,
                 password TEXT,
-                role TEXT CHECK(role IN ('agent', 'admin')))
+                role TEXT CHECK(role IN ('agent', 'admin')),
+                group_name TEXT DEFAULT 'General')
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_name TEXT UNIQUE,
+                created_at TEXT)
         """)
         
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS requests (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 agent_name TEXT,
+                group_name TEXT,
                 request_type TEXT,
                 identifier TEXT,
                 comment TEXT,
@@ -56,6 +67,7 @@ def init_db():
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS mistakes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_name TEXT,
                 team_leader TEXT,
                 agent_name TEXT,
                 ticket_id TEXT,
@@ -66,6 +78,7 @@ def init_db():
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS group_messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_name TEXT,
                 sender TEXT,
                 message TEXT,
                 timestamp TEXT,
@@ -75,31 +88,23 @@ def init_db():
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS hold_images (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_name TEXT,
                 uploader TEXT,
                 image_data BLOB,
                 timestamp TEXT)
         """)
         
-        # Handle system_settings table schema migration
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='system_settings'")
-        if not cursor.fetchone():
-            cursor.execute("""
-                CREATE TABLE system_settings (
-                    id INTEGER PRIMARY KEY DEFAULT 1,
-                    killswitch_enabled INTEGER DEFAULT 0,
-                    chat_killswitch_enabled INTEGER DEFAULT 0)
-            """)
-            cursor.execute("INSERT INTO system_settings (id, killswitch_enabled, chat_killswitch_enabled) VALUES (1, 0, 0)")
-        else:
-            cursor.execute("PRAGMA table_info(system_settings)")
-            columns = [column[1] for column in cursor.fetchall()]
-            if 'chat_killswitch_enabled' not in columns:
-                cursor.execute("ALTER TABLE system_settings ADD COLUMN chat_killswitch_enabled INTEGER DEFAULT 0")
-                cursor.execute("UPDATE system_settings SET chat_killswitch_enabled = 0 WHERE id = 1")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS system_settings (
+                id INTEGER PRIMARY KEY DEFAULT 1,
+                killswitch_enabled INTEGER DEFAULT 0,
+                chat_killswitch_enabled INTEGER DEFAULT 0)
+        """)
         
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS breaks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_name TEXT,
                 break_name TEXT,
                 start_time TEXT,
                 end_time TEXT,
@@ -112,6 +117,7 @@ def init_db():
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS break_bookings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_name TEXT,
                 break_id INTEGER,
                 user_id INTEGER,
                 username TEXT,
@@ -123,6 +129,7 @@ def init_db():
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS request_comments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_name TEXT,
                 request_id INTEGER,
                 user TEXT,
                 comment TEXT,
@@ -130,78 +137,61 @@ def init_db():
                 FOREIGN KEY(request_id) REFERENCES requests(id))
         """)
         
-        # Create default admin account
+        # Initialize system settings
         cursor.execute("""
-            INSERT OR IGNORE INTO users (username, password, role) 
-            VALUES (?, ?, ?)
-        """, ("taha kirri", hash_password("arise@99"), "admin"))
+            INSERT OR IGNORE INTO system_settings (id, killswitch_enabled, chat_killswitch_enabled)
+            VALUES (1, 0, 0)
+        """)
+        
+        # Create default groups
+        default_groups = ['Spanish', 'French', 'English', 'General']
+        for group in default_groups:
+            cursor.execute("""
+                INSERT OR IGNORE INTO groups (group_name, created_at)
+                VALUES (?, ?)
+            """, (group, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        
+        # Create admin accounts
         admin_accounts = [
-            ("taha kirri", "arise@99"),
-            ("Issam Samghini", "admin@2025"),
-            ("Loubna Fellah", "admin@99"),
-            ("Youssef Kamal", "admin@006"),
-            ("Fouad Fathi", "admin@55")
+            ("taha kirri", "arise@99", "admin", "General"),
+            ("Issam Samghini", "admin@2025", "admin", "General"),
+            ("Loubna Fellah", "admin@99", "admin", "General"),
+            ("Youssef Kamal", "admin@006", "admin", "General"),
+            ("Fouad Fathi", "admin@55", "admin", "General")
         ]
         
-        for username, password in admin_accounts:
+        for username, password, role, group in admin_accounts:
             cursor.execute("""
-                INSERT OR IGNORE INTO users (username, password, role) 
-                VALUES (?, ?, ?)
-            """, (username, hash_password(password), "admin"))
-        # Create agent accounts (agent name as username, workspace ID as password)
-        agents = [
-            ("Karabila Younes", "30866"),
-            ("Kaoutar Mzara", "30514"),
-            ("Ben Tahar Chahid", "30864"),
-            ("Cherbassi Khadija", "30868"),
-            ("Lekhmouchi Kamal", "30869"),
-            ("Said Kilani", "30626"),
-            ("AGLIF Rachid", "30830"),
-            ("Yacine Adouha", "30577"),
-            ("Manal Elanbi", "30878"),
-            ("Jawad Ouassaddine", "30559"),
-            ("Kamal Elhaouar", "30844"),
-            ("Hoummad Oubella", "30702"),
-            ("Zouheir Essafi", "30703"),
-            ("Anwar Atifi", "30781"),
-            ("Said Elgaouzi", "30782"),
-            ("HAMZA SAOUI", "30716"),
-            ("Ibtissam Mazhari", "30970"),
-            ("Imad Ghazali", "30971"),
-            ("Jamila Lahrech", "30972"),
-            ("Nassim Ouazzani Touhami", "30973"),
-            ("Salaheddine Chaggour", "30974"),
-            ("Omar Tajani", "30711"),
-            ("Nizar Remz", "30728"),
-            ("Abdelouahed Fettah", "30693"),
-            ("Amal Bouramdane", "30675"),
-            ("Fatima Ezzahrae Oubaalla", "30513"),
-            ("Redouane Bertal", "30643"),
-            ("Abdelouahab Chenani", "30789"),
-            ("Imad El Youbi", "30797"),
-            ("Youssef Hammouda", "30791"),
-            ("Anas Ouassifi", "30894"),
-            ("SALSABIL ELMOUSS", "30723"),
-            ("Hicham Khalafa", "30712"),
-            ("Ghita Adib", "30710"),
-            ("Aymane Msikila", "30722"),
-            ("Marouane Boukhadda", "30890"),
-            ("Hamid Boulatouan", "30899"),
-            ("Bouchaib Chafiqi", "30895"),
-            ("Houssam Gouaalla", "30891"),
-            ("Abdellah Rguig", "30963"),
-            ("Abdellatif Chatir", "30964"),
-            ("Abderrahman Oueto", "30965"),
-            ("Fatiha Lkamel", "30967"),
-            ("Abdelhamid Jaber", "30708"),
-            ("Yassine Elkanouni", "30735")
+                INSERT OR IGNORE INTO users (username, password, role, group_name)
+                VALUES (?, ?, ?, ?)
+            """, (username, hash_password(password), role, group))
+        
+        # Create agent accounts with group assignments
+        spanish_agents = [
+            ("Karabila Younes", "30866", "Spanish"),
+            ("Kaoutar Mzara", "30514", "Spanish"),
+            ("Ben Tahar Chahid", "30864", "Spanish")
         ]
         
-        for agent_name, workspace_id in agents:
+        french_agents = [
+            ("Lekhmouchi Kamal", "30869", "French"),
+            ("Said Kilani", "30626", "French"),
+            ("AGLIF Rachid", "30830", "French")
+        ]
+        
+        english_agents = [
+            ("Yacine Adouha", "30577", "English"),
+            ("Manal Elanbi", "30878", "English"),
+            ("Jawad Ouassaddine", "30559", "English")
+        ]
+        
+        all_agents = spanish_agents + french_agents + english_agents
+        
+        for agent_name, workspace_id, group in all_agents:
             cursor.execute("""
-                INSERT OR IGNORE INTO users (username, password, role) 
-                VALUES (?, ?, ?)
-            """, (agent_name, hash_password(workspace_id), "agent"))
+                INSERT OR IGNORE INTO users (username, password, role, group_name)
+                VALUES (?, ?, ?, ?)
+            """, (agent_name, hash_password(workspace_id), "agent", group))
         
         conn.commit()
     finally:
@@ -249,7 +239,7 @@ def toggle_chat_killswitch(enable):
     finally:
         conn.close()
 
-def add_request(agent_name, request_type, identifier, comment):
+def add_request(agent_name, group_name, request_type, identifier, comment):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -259,44 +249,49 @@ def add_request(agent_name, request_type, identifier, comment):
         cursor = conn.cursor()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cursor.execute("""
-            INSERT INTO requests (agent_name, request_type, identifier, comment, timestamp) 
-            VALUES (?, ?, ?, ?, ?)
-        """, (agent_name, request_type, identifier, comment, timestamp))
+            INSERT INTO requests (agent_name, group_name, request_type, identifier, comment, timestamp) 
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (agent_name, group_name, request_type, identifier, comment, timestamp))
         
         request_id = cursor.lastrowid
         
         cursor.execute("""
-            INSERT INTO request_comments (request_id, user, comment, timestamp)
-            VALUES (?, ?, ?, ?)
-        """, (request_id, agent_name, f"Request created: {comment}", timestamp))
+            INSERT INTO request_comments (group_name, request_id, user, comment, timestamp)
+            VALUES (?, ?, ?, ?, ?)
+        """, (group_name, request_id, agent_name, f"Request created: {comment}", timestamp))
         
         conn.commit()
         return True
     finally:
         conn.close()
 
-def get_requests():
+def get_requests(group_name):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM requests ORDER BY timestamp DESC")
+        cursor.execute("""
+            SELECT * FROM requests 
+            WHERE group_name = ? 
+            ORDER BY timestamp DESC
+        """, (group_name,))
         return cursor.fetchall()
     finally:
         conn.close()
 
-def search_requests(query):
+def search_requests(group_name, query):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         query = f"%{query.lower()}%"
         cursor.execute("""
             SELECT * FROM requests 
-            WHERE LOWER(agent_name) LIKE ? 
+            WHERE group_name = ?
+            AND (LOWER(agent_name) LIKE ? 
             OR LOWER(request_type) LIKE ? 
             OR LOWER(identifier) LIKE ? 
-            OR LOWER(comment) LIKE ?
+            OR LOWER(comment) LIKE ?)
             ORDER BY timestamp DESC
-        """, (query, query, query, query))
+        """, (group_name, query, query, query, query))
         return cursor.fetchall()
     finally:
         conn.close()
@@ -316,7 +311,7 @@ def update_request_status(request_id, completed):
     finally:
         conn.close()
 
-def add_request_comment(request_id, user, comment):
+def add_request_comment(group_name, request_id, user, comment):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -325,28 +320,28 @@ def add_request_comment(request_id, user, comment):
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO request_comments (request_id, user, comment, timestamp)
-            VALUES (?, ?, ?, ?)
-        """, (request_id, user, comment, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+            INSERT INTO request_comments (group_name, request_id, user, comment, timestamp)
+            VALUES (?, ?, ?, ?, ?)
+        """, (group_name, request_id, user, comment, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         conn.commit()
         return True
     finally:
         conn.close()
 
-def get_request_comments(request_id):
+def get_request_comments(group_name, request_id):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT * FROM request_comments 
-            WHERE request_id = ?
+            WHERE group_name = ? AND request_id = ?
             ORDER BY timestamp ASC
-        """, (request_id,))
+        """, (group_name, request_id))
         return cursor.fetchall()
     finally:
         conn.close()
 
-def add_mistake(team_leader, agent_name, ticket_id, error_description):
+def add_mistake(group_name, team_leader, agent_name, ticket_id, error_description):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -355,41 +350,46 @@ def add_mistake(team_leader, agent_name, ticket_id, error_description):
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO mistakes (team_leader, agent_name, ticket_id, error_description, timestamp) 
-            VALUES (?, ?, ?, ?, ?)
-        """, (team_leader, agent_name, ticket_id, error_description,
+            INSERT INTO mistakes (group_name, team_leader, agent_name, ticket_id, error_description, timestamp) 
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (group_name, team_leader, agent_name, ticket_id, error_description,
              datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         conn.commit()
         return True
     finally:
         conn.close()
 
-def get_mistakes():
+def get_mistakes(group_name):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM mistakes ORDER BY timestamp DESC")
+        cursor.execute("""
+            SELECT * FROM mistakes 
+            WHERE group_name = ?
+            ORDER BY timestamp DESC
+        """, (group_name,))
         return cursor.fetchall()
     finally:
         conn.close()
 
-def search_mistakes(query):
+def search_mistakes(group_name, query):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         query = f"%{query.lower()}%"
         cursor.execute("""
             SELECT * FROM mistakes 
-            WHERE LOWER(agent_name) LIKE ? 
+            WHERE group_name = ?
+            AND (LOWER(agent_name) LIKE ? 
             OR LOWER(ticket_id) LIKE ? 
-            OR LOWER(error_description) LIKE ?
+            OR LOWER(error_description) LIKE ?)
             ORDER BY timestamp DESC
-        """, (query, query, query))
+        """, (group_name, query, query, query))
         return cursor.fetchall()
     finally:
         conn.close()
 
-def send_group_message(sender, message):
+def send_group_message(group_name, sender, message):
     if is_killswitch_enabled() or is_chat_killswitch_enabled():
         st.error("Chat is currently locked. Please contact the developer.")
         return False
@@ -399,20 +399,25 @@ def send_group_message(sender, message):
         cursor = conn.cursor()
         mentions = re.findall(r'@(\w+)', message)
         cursor.execute("""
-            INSERT INTO group_messages (sender, message, timestamp, mentions) 
-            VALUES (?, ?, ?, ?)
-        """, (sender, message, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
+            INSERT INTO group_messages (group_name, sender, message, timestamp, mentions) 
+            VALUES (?, ?, ?, ?, ?)
+        """, (group_name, sender, message, 
+             datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
              ','.join(mentions)))
         conn.commit()
         return True
     finally:
         conn.close()
 
-def get_group_messages():
+def get_group_messages(group_name):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM group_messages ORDER BY timestamp DESC LIMIT 50")
+        cursor.execute("""
+            SELECT * FROM group_messages 
+            WHERE group_name = ?
+            ORDER BY timestamp DESC LIMIT 50
+        """, (group_name,))
         return cursor.fetchall()
     finally:
         conn.close()
@@ -421,12 +426,12 @@ def get_all_users():
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, username, role FROM users")
+        cursor.execute("SELECT id, username, role, group_name FROM users")
         return cursor.fetchall()
     finally:
         conn.close()
 
-def add_user(username, password, role):
+def add_user(username, password, role, group_name):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -434,8 +439,10 @@ def add_user(username, password, role):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
-                      (username, hash_password(password), role))
+        cursor.execute("""
+            INSERT INTO users (username, password, role, group_name) 
+            VALUES (?, ?, ?, ?)
+        """, (username, hash_password(password), role, group_name))
         conn.commit()
         return True
     finally:
@@ -455,7 +462,18 @@ def delete_user(user_id):
     finally:
         conn.close()
 
-def add_hold_image(uploader, image_data):
+def update_user_group(user_id, new_group):
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET group_name = ? WHERE id = ?",
+                      (new_group, user_id))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+def add_hold_image(group_name, uploader, image_data):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -464,127 +482,153 @@ def add_hold_image(uploader, image_data):
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO hold_images (uploader, image_data, timestamp) 
-            VALUES (?, ?, ?)
-        """, (uploader, image_data, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def get_hold_images():
-    conn = sqlite3.connect("data/requests.db")
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM hold_images ORDER BY timestamp DESC")
-        return cursor.fetchall()
-    finally:
-        conn.close()
-
-def clear_hold_images():
-    if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = sqlite3.connect("data/requests.db")
-    try:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM hold_images")
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def clear_all_requests():
-    if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = sqlite3.connect("data/requests.db")
-    try:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM requests")
-        cursor.execute("DELETE FROM request_comments")
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def clear_all_mistakes():
-    if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = sqlite3.connect("data/requests.db")
-    try:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM mistakes")
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def clear_all_group_messages():
-    if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = sqlite3.connect("data/requests.db")
-    try:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM group_messages")
-        conn.commit()
-        return True
-    finally:
-        conn.close()
-
-def add_break_slot(break_name, start_time, end_time, max_users, created_by):
-    if is_killswitch_enabled():
-        st.error("System is currently locked. Please contact the developer.")
-        return False
-        
-    conn = sqlite3.connect("data/requests.db")
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO breaks (break_name, start_time, end_time, max_users, created_by, timestamp) 
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (break_name, start_time, end_time, max_users, created_by,
+            INSERT INTO hold_images (group_name, uploader, image_data, timestamp) 
+            VALUES (?, ?, ?, ?)
+        """, (group_name, uploader, image_data, 
              datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         conn.commit()
         return True
     finally:
         conn.close()
 
-def get_all_break_slots():
+def get_hold_images(group_name):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM breaks ORDER BY start_time")
+        cursor.execute("""
+            SELECT * FROM hold_images 
+            WHERE group_name = ?
+            ORDER BY timestamp DESC
+        """, (group_name,))
         return cursor.fetchall()
     finally:
         conn.close()
 
-def get_available_break_slots(date):
+def clear_hold_images(group_name=None):
+    if is_killswitch_enabled():
+        st.error("System is currently locked. Please contact the developer.")
+        return False
+        
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        if group_name:
+            cursor.execute("DELETE FROM hold_images WHERE group_name = ?", (group_name,))
+        else:
+            cursor.execute("DELETE FROM hold_images")
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+def clear_all_requests(group_name=None):
+    if is_killswitch_enabled():
+        st.error("System is currently locked. Please contact the developer.")
+        return False
+        
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        if group_name:
+            cursor.execute("DELETE FROM requests WHERE group_name = ?", (group_name,))
+            cursor.execute("DELETE FROM request_comments WHERE group_name = ?", (group_name,))
+        else:
+            cursor.execute("DELETE FROM requests")
+            cursor.execute("DELETE FROM request_comments")
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+def clear_all_mistakes(group_name=None):
+    if is_killswitch_enabled():
+        st.error("System is currently locked. Please contact the developer.")
+        return False
+        
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        if group_name:
+            cursor.execute("DELETE FROM mistakes WHERE group_name = ?", (group_name,))
+        else:
+            cursor.execute("DELETE FROM mistakes")
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+def clear_all_group_messages(group_name=None):
+    if is_killswitch_enabled():
+        st.error("System is currently locked. Please contact the developer.")
+        return False
+        
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        if group_name:
+            cursor.execute("DELETE FROM group_messages WHERE group_name = ?", (group_name,))
+        else:
+            cursor.execute("DELETE FROM group_messages")
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+def add_break_slot(group_name, break_name, start_time, end_time, max_users, created_by):
+    if is_killswitch_enabled():
+        st.error("System is currently locked. Please contact the developer.")
+        return False
+        
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO breaks (group_name, break_name, start_time, end_time, max_users, created_by, timestamp) 
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (group_name, break_name, start_time, end_time, max_users, created_by,
+             datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+def get_all_break_slots(group_name=None):
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        if group_name:
+            cursor.execute("""
+                SELECT * FROM breaks 
+                WHERE group_name = ?
+                ORDER BY start_time
+            """, (group_name,))
+        else:
+            cursor.execute("SELECT * FROM breaks ORDER BY start_time")
+        return cursor.fetchall()
+    finally:
+        conn.close()
+
+def get_available_break_slots(group_name, date):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT b.* 
             FROM breaks b
-            WHERE b.max_users > (
+            WHERE b.group_name = ?
+            AND b.max_users > (
                 SELECT COUNT(*) 
                 FROM break_bookings bb 
                 WHERE bb.break_id = b.id 
                 AND bb.booking_date = ?
             )
             ORDER BY b.start_time
-        """, (date,))
+        """, (group_name, date))
         return cursor.fetchall()
     finally:
         conn.close()
 
-def book_break_slot(break_id, user_id, username, booking_date):
+def book_break_slot(group_name, break_id, user_id, username, booking_date):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -593,16 +637,16 @@ def book_break_slot(break_id, user_id, username, booking_date):
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO break_bookings (break_id, user_id, username, booking_date, timestamp) 
-            VALUES (?, ?, ?, ?, ?)
-        """, (break_id, user_id, username, booking_date,
+            INSERT INTO break_bookings (group_name, break_id, user_id, username, booking_date, timestamp) 
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (group_name, break_id, user_id, username, booking_date,
              datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         conn.commit()
         return True
     finally:
         conn.close()
 
-def get_user_bookings(username, date):
+def get_user_bookings(group_name, username, date):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
@@ -610,13 +654,13 @@ def get_user_bookings(username, date):
             SELECT bb.*, b.break_name, b.start_time, b.end_time
             FROM break_bookings bb
             JOIN breaks b ON bb.break_id = b.id
-            WHERE bb.username = ? AND bb.booking_date = ?
-        """, (username, date))
+            WHERE bb.group_name = ? AND bb.username = ? AND bb.booking_date = ?
+        """, (group_name, username, date))
         return cursor.fetchall()
     finally:
         conn.close()
 
-def get_all_bookings(date):
+def get_all_bookings(group_name, date):
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
@@ -625,9 +669,9 @@ def get_all_bookings(date):
             FROM break_bookings bb
             JOIN breaks b ON bb.break_id = b.id
             JOIN users u ON bb.user_id = u.id
-            WHERE bb.booking_date = ?
+            WHERE bb.group_name = ? AND bb.booking_date = ?
             ORDER BY b.start_time, bb.username
-        """, (date,))
+        """, (group_name, date))
         return cursor.fetchall()
     finally:
         conn.close()
@@ -647,7 +691,7 @@ def delete_break_slot(break_id):
     finally:
         conn.close()
 
-def clear_all_break_bookings():
+def clear_all_break_bookings(group_name=None):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -655,7 +699,59 @@ def clear_all_break_bookings():
     conn = sqlite3.connect("data/requests.db")
     try:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM break_bookings")
+        if group_name:
+            cursor.execute("DELETE FROM break_bookings WHERE group_name = ?", (group_name,))
+        else:
+            cursor.execute("DELETE FROM break_bookings")
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+def get_all_groups():
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT group_name FROM groups ORDER BY group_name")
+        return [row[0] for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+def add_group(group_name):
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO groups (group_name, created_at)
+            VALUES (?, ?)
+        """, (group_name, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    finally:
+        conn.close()
+
+def delete_group(group_name):
+    conn = sqlite3.connect("data/requests.db")
+    try:
+        cursor = conn.cursor()
+        
+        # Delete all group-specific data
+        cursor.execute("DELETE FROM requests WHERE group_name = ?", (group_name,))
+        cursor.execute("DELETE FROM mistakes WHERE group_name = ?", (group_name,))
+        cursor.execute("DELETE FROM group_messages WHERE group_name = ?", (group_name,))
+        cursor.execute("DELETE FROM hold_images WHERE group_name = ?", (group_name,))
+        cursor.execute("DELETE FROM breaks WHERE group_name = ?", (group_name,))
+        cursor.execute("DELETE FROM break_bookings WHERE group_name = ?", (group_name,))
+        cursor.execute("DELETE FROM request_comments WHERE group_name = ?", (group_name,))
+        
+        # Update users in this group to default group
+        cursor.execute("UPDATE users SET group_name = 'General' WHERE group_name = ?", (group_name,))
+        
+        # Finally delete the group
+        cursor.execute("DELETE FROM groups WHERE group_name = ?", (group_name,))
+        
         conn.commit()
         return True
     finally:
@@ -803,12 +899,13 @@ def is_fancy_number(phone_number):
 # --------------------------
 
 st.set_page_config(
-    page_title="Request Management System",
+    page_title="Multi-Group Request System",
     page_icon=":office:",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
+# Custom CSS styles
 st.markdown("""
 <style>
     .stApp { background-color: #121212; color: #E0E0E0; }
@@ -844,7 +941,14 @@ st.markdown("""
     .comment-text {
         margin-top: 0.5rem;
     }
-    /* Fancy number checker styles */
+    .group-badge {
+        display: inline-block;
+        padding: 0.25rem 0.5rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: bold;
+        margin-left: 0.5rem;
+    }
     .fancy-number { color: #00ff00; font-weight: bold; }
     .normal-number { color: #ffffff; }
     .result-box { padding: 15px; border-radius: 5px; margin: 10px 0; }
@@ -853,10 +957,12 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Initialize session state
 if "authenticated" not in st.session_state:
     st.session_state.update({
         "authenticated": False,
         "role": None,
+        "group": None,
         "username": None,
         "current_section": "requests",
         "last_request_count": 0,
@@ -864,32 +970,37 @@ if "authenticated" not in st.session_state:
         "last_message_ids": []
     })
 
+# Initialize database
 init_db()
 
+# Login page
 if not st.session_state.authenticated:
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.title("🏢 Request Management System")
+        st.title("🏢 Multi-Group Request System")
         with st.form("login_form"):
             username = st.text_input("Username")
             password = st.text_input("Password", type="password")
             if st.form_submit_button("Login"):
                 if username and password:
-                    role = authenticate(username, password)
+                    role, group = authenticate(username, password)
                     if role:
                         st.session_state.update({
                             "authenticated": True,
                             "role": role,
+                            "group": group,
                             "username": username,
-                            "last_request_count": len(get_requests()),
-                            "last_mistake_count": len(get_mistakes()),
-                            "last_message_ids": [msg[0] for msg in get_group_messages()]
+                            "last_request_count": len(get_requests(group)),
+                            "last_mistake_count": len(get_mistakes(group)),
+                            "last_message_ids": [msg[0] for msg in get_group_messages(group)]
                         })
                         st.rerun()
                     else:
                         st.error("Invalid credentials")
 
+# Main application
 else:
+    # System status indicators
     if is_killswitch_enabled():
         st.markdown("""
         <div class="killswitch-active">
@@ -905,47 +1016,59 @@ else:
         </div>
         """, unsafe_allow_html=True)
 
+    # Notification system
     def show_notifications():
-        current_requests = get_requests()
-        current_mistakes = get_mistakes()
-        current_messages = get_group_messages()
+        current_requests = get_requests(st.session_state.group)
+        current_mistakes = get_mistakes(st.session_state.group)
+        current_messages = get_group_messages(st.session_state.group)
         
         new_requests = len(current_requests) - st.session_state.last_request_count
         if new_requests > 0 and st.session_state.last_request_count > 0:
-            st.toast(f"📋 {new_requests} new request(s) submitted!")
-        st.session_state.last_request_count = len(current_requests)
+            st.toast(f"📋 {new_requests} new request(s) in your group!")
         
         new_mistakes = len(current_mistakes) - st.session_state.last_mistake_count
         if new_mistakes > 0 and st.session_state.last_mistake_count > 0:
-            st.toast(f"❌ {new_mistakes} new mistake(s) reported!")
-        st.session_state.last_mistake_count = len(current_mistakes)
+            st.toast(f"❌ {new_mistakes} new mistake(s) in your group!")
         
         current_message_ids = [msg[0] for msg in current_messages]
         new_messages = [msg for msg in current_messages if msg[0] not in st.session_state.last_message_ids]
+        
         for msg in new_messages:
-            if msg[1] != st.session_state.username:
-                mentions = msg[4].split(',') if msg[4] else []
+            if msg[2] != st.session_state.username:  # msg[2] is sender
+                mentions = msg[5].split(',') if msg[5] else []  # msg[5] is mentions
                 if st.session_state.username in mentions:
-                    st.toast(f"💬 You were mentioned by {msg[1]}!")
+                    st.toast(f"💬 You were mentioned by {msg[2]} in group chat!")
                 else:
-                    st.toast(f"💬 New message from {msg[1]}!")
+                    st.toast(f"💬 New message from {msg[2]} in group chat!")
+        
+        # Update session state
+        st.session_state.last_request_count = len(current_requests)
+        st.session_state.last_mistake_count = len(current_mistakes)
         st.session_state.last_message_ids = current_message_ids
 
     show_notifications()
 
+    # Sidebar navigation
     with st.sidebar:
-        st.title(f"👋 Welcome, {st.session_state.username}")
+        st.title(f"👋 {st.session_state.username}")
+        st.markdown(f"""
+        <div class="group-badge" style="background-color: #3b82f6; color: white;">
+            {st.session_state.group}
+        </div>
+        """, unsafe_allow_html=True)
         st.markdown("---")
         
+        # Navigation options
         nav_options = [
             ("📋 Requests", "requests"),
             ("📊 Dashboard", "dashboard"),
             ("☕ Breaks", "breaks"),
             ("🖼️ HOLD", "hold"),
             ("❌ Mistakes", "mistakes"),
-            ("💬 Chat", "chat"),
-            ("📱 Fancy Number", "fancy_number")  # Added Fancy Number section
+            ("💬 Group Chat", "chat"),
+            ("📱 Fancy Number", "fancy_number")
         ]
+        
         if st.session_state.role == "admin":
             nav_options.append(("⚙️ Admin", "admin"))
         
@@ -954,15 +1077,17 @@ else:
                 st.session_state.current_section = value
                 
         st.markdown("---")
-        pending_requests = len([r for r in get_requests() if not r[6]])
-        new_mistakes = len(get_mistakes())
-        unread_messages = len([m for m in get_group_messages() 
+        
+        # Notification summary
+        pending_requests = len([r for r in get_requests(st.session_state.group) if not r[7]])  # index 7 is completed
+        new_mistakes = len(get_mistakes(st.session_state.group))
+        unread_messages = len([m for m in get_group_messages(st.session_state.group) 
                              if m[0] not in st.session_state.last_message_ids 
-                             and m[1] != st.session_state.username])
+                             and m[2] != st.session_state.username])  # index 2 is sender
         
         st.markdown(f"""
         <div style="margin-bottom: 20px;">
-            <h4>🔔 Notifications</h4>
+            <h4>🔔 Group Notifications</h4>
             <p>📋 Pending requests: {pending_requests}</p>
             <p>❌ Recent mistakes: {new_mistakes}</p>
             <p>💬 Unread messages: {unread_messages}</p>
@@ -973,8 +1098,10 @@ else:
             st.session_state.authenticated = False
             st.rerun()
 
-    st.title(st.session_state.current_section.title())
+    # Main content area
+    st.title(f"{st.session_state.current_section.title()} - {st.session_state.group}")
 
+    # Requests section
     if st.session_state.current_section == "requests":
         if not is_killswitch_enabled():
             with st.expander("➕ Submit New Request"):
@@ -985,17 +1112,18 @@ else:
                     comment = st.text_area("Comment")
                     if st.form_submit_button("Submit"):
                         if identifier and comment:
-                            if add_request(st.session_state.username, request_type, identifier, comment):
+                            if add_request(st.session_state.username, st.session_state.group, 
+                                         request_type, identifier, comment):
                                 st.success("Request submitted successfully!")
                                 st.rerun()
         
         st.subheader("🔍 Search Requests")
         search_query = st.text_input("Search requests...")
-        requests = search_requests(search_query) if search_query else get_requests()
+        requests = search_requests(st.session_state.group, search_query) if search_query else get_requests(st.session_state.group)
         
-        st.subheader("All Requests")
+        st.subheader(f"{st.session_state.group} Requests")
         for req in requests:
-            req_id, agent, req_type, identifier, comment, timestamp, completed = req
+            req_id, agent, group, req_type, identifier, comment, timestamp, completed = req
             with st.container():
                 cols = st.columns([0.1, 0.9])
                 with cols[0]:
@@ -1019,9 +1147,9 @@ else:
                             <h5>Status Updates:</h5>
                     """, unsafe_allow_html=True)
                     
-                    comments = get_request_comments(req_id)
+                    comments = get_request_comments(st.session_state.group, req_id)
                     for comment in comments:
-                        cmt_id, _, user, cmt_text, cmt_time = comment
+                        cmt_id, cmt_group, req_id, user, cmt_text, cmt_time = comment
                         st.markdown(f"""
                             <div class="comment-box">
                                 <div class="comment-user">
@@ -1039,14 +1167,16 @@ else:
                             new_comment = st.text_input("Add status update/comment")
                             if st.form_submit_button("Add Comment"):
                                 if new_comment:
-                                    add_request_comment(req_id, st.session_state.username, new_comment)
+                                    add_request_comment(st.session_state.group, req_id, 
+                                                       st.session_state.username, new_comment)
                                     st.rerun()
 
+    # Dashboard section
     elif st.session_state.current_section == "dashboard":
-        st.subheader("📊 Request Completion Dashboard")
-        all_requests = get_requests()
+        st.subheader(f"📊 {st.session_state.group} Dashboard")
+        all_requests = get_requests(st.session_state.group)
         total = len(all_requests)
-        completed = sum(1 for r in all_requests if r[6])
+        completed = sum(1 for r in all_requests if r[7])  # index 7 is completed
         rate = (completed/total*100) if total > 0 else 0
         
         col1, col2, col3 = st.columns(3)
@@ -1058,9 +1188,9 @@ else:
             st.metric("Completion Rate", f"{rate:.1f}%")
         
         df = pd.DataFrame({
-            'Date': [datetime.strptime(r[5], "%Y-%m-%d %H:%M:%S").date() for r in all_requests],
-            'Status': ['Completed' if r[6] else 'Pending' for r in all_requests],
-            'Type': [r[2] for r in all_requests]
+            'Date': [datetime.strptime(r[6], "%Y-%m-%d %H:%M:%S").date() for r in all_requests],  # index 6 is timestamp
+            'Status': ['Completed' if r[7] else 'Pending' for r in all_requests],
+            'Type': [r[3] for r in all_requests]  # index 3 is request_type
         })
         
         st.subheader("Request Trends")
@@ -1071,13 +1201,14 @@ else:
         type_counts.columns = ['Type', 'Count']
         st.bar_chart(type_counts.set_index('Type'))
 
+    # Breaks section
     elif st.session_state.current_section == "breaks":
         today = datetime.now().strftime("%Y-%m-%d")
         selected_date = st.date_input("Select date", datetime.now())
         formatted_date = selected_date.strftime("%Y-%m-%d")
         
         if st.session_state.role == "admin":
-            st.subheader("Admin: Break Schedule Management")
+            st.subheader(f"Admin: {st.session_state.group} Break Schedule")
             
             with st.expander("➕ Add New Break Slot"):
                 with st.form("add_break_form"):
@@ -1090,6 +1221,7 @@ else:
                     if st.form_submit_button("Add Break Slot"):
                         if break_name:
                             add_break_slot(
+                                st.session_state.group,
                                 break_name,
                                 start_time.strftime("%H:%M"),
                                 end_time.strftime("%H:%M"),
@@ -1099,9 +1231,9 @@ else:
                             st.rerun()
             
             st.subheader("Current Break Schedule")
-            breaks = get_all_break_slots()
+            breaks = get_all_break_slots(st.session_state.group)
             for b in breaks:
-                b_id, name, start, end, max_u, curr_u, created_by, ts = b
+                b_id, group, name, start, end, max_u, curr_u, created_by, ts = b
                 with st.container():
                     cols = st.columns([3, 2, 2, 1, 1])
                     cols[0].write(f"{name} ({start} - {end})")
@@ -1116,34 +1248,34 @@ else:
                         st.rerun()
             
             st.markdown("---")
-            st.subheader("All Bookings for Selected Date")
-            bookings = get_all_bookings(formatted_date)
+            st.subheader(f"All Bookings for {formatted_date}")
+            bookings = get_all_bookings(st.session_state.group, formatted_date)
             if bookings:
                 for b in bookings:
-                    b_id, break_id, user_id, username, date, ts, break_name, start, end, role = b
+                    b_id, group, break_id, user_id, username, date, ts, break_name, start, end, role = b
                     st.write(f"{username} ({role}) - {break_name} ({start} - {end})")
             else:
                 st.info("No bookings for selected date")
             
-            if st.button("Clear All Bookings", key="clear_all_bookings"):
-                clear_all_break_bookings()
+            if st.button("Clear All Group Bookings", key="clear_group_bookings"):
+                clear_all_break_bookings(st.session_state.group)
                 st.rerun()
         
         else:
             st.subheader("Available Break Slots")
-            available_breaks = get_available_break_slots(formatted_date)
+            available_breaks = get_available_break_slots(st.session_state.group, formatted_date)
             
             if available_breaks:
                 for b in available_breaks:
-                    b_id, name, start, end, max_u, curr_u, created_by, ts = b
+                    b_id, group, name, start, end, max_u, curr_u, created_by, ts = b
                     
                     conn = sqlite3.connect("data/requests.db")
                     cursor = conn.cursor()
                     cursor.execute("""
                         SELECT COUNT(*) 
                         FROM break_bookings 
-                        WHERE break_id = ? AND booking_date = ?
-                    """, (b_id, formatted_date))
+                        WHERE break_id = ? AND booking_date = ? AND group_name = ?
+                    """, (b_id, formatted_date, st.session_state.group))
                     booked_count = cursor.fetchone()[0]
                     conn.close()
                     
@@ -1162,20 +1294,22 @@ else:
                             user_id = cursor.fetchone()[0]
                             conn.close()
                             
-                            book_break_slot(b_id, user_id, st.session_state.username, formatted_date)
+                            book_break_slot(st.session_state.group, b_id, user_id, 
+                                          st.session_state.username, formatted_date)
                             st.rerun()
             
             st.markdown("---")
             st.subheader("Your Bookings")
-            user_bookings = get_user_bookings(st.session_state.username, formatted_date)
+            user_bookings = get_user_bookings(st.session_state.group, st.session_state.username, formatted_date)
             
             if user_bookings:
                 for b in user_bookings:
-                    b_id, break_id, user_id, username, date, ts, break_name, start, end = b
+                    b_id, group, break_id, user_id, username, date, ts, break_name, start, end = b
                     st.write(f"{break_name} ({start} - {end})")
             else:
                 st.info("You have no bookings for selected date")
 
+    # Mistakes section
     elif st.session_state.current_section == "mistakes":
         if not is_killswitch_enabled():
             with st.expander("➕ Report New Mistake"):
@@ -1186,15 +1320,16 @@ else:
                     error_description = st.text_area("Error Description")
                     if st.form_submit_button("Submit"):
                         if agent_name and ticket_id and error_description:
-                            add_mistake(st.session_state.username, agent_name, ticket_id, error_description)
+                            add_mistake(st.session_state.group, st.session_state.username, 
+                                       agent_name, ticket_id, error_description)
         
         st.subheader("🔍 Search Mistakes")
         search_query = st.text_input("Search mistakes...")
-        mistakes = search_mistakes(search_query) if search_query else get_mistakes()
+        mistakes = search_mistakes(st.session_state.group, search_query) if search_query else get_mistakes(st.session_state.group)
         
-        st.subheader("Mistakes Log")
+        st.subheader(f"{st.session_state.group} Mistakes Log")
         for mistake in mistakes:
-            m_id, tl, agent, ticket, error, ts = mistake
+            m_id, group, tl, agent, ticket, error, ts = mistake
             st.markdown(f"""
             <div class="card">
                 <div style="display: flex; justify-content: space-between;">
@@ -1207,13 +1342,14 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
+    # Group Chat section
     elif st.session_state.current_section == "chat":
         if is_chat_killswitch_enabled():
             st.warning("Chat functionality is currently disabled by the administrator.")
         else:
-            messages = get_group_messages()
+            messages = get_group_messages(st.session_state.group)
             for msg in reversed(messages):
-                msg_id, sender, message, ts, mentions = msg
+                msg_id, group, sender, message, ts, mentions = msg
                 is_mentioned = st.session_state.username in (mentions.split(',') if mentions else [])
                 st.markdown(f"""
                 <div style="background-color: {'#3b82f6' if is_mentioned else '#1F1F1F'};
@@ -1230,20 +1366,21 @@ else:
                     message = st.text_input("Type your message...")
                     if st.form_submit_button("Send"):
                         if message:
-                            send_group_message(st.session_state.username, message)
+                            send_group_message(st.session_state.group, st.session_state.username, message)
                             st.rerun()
 
+    # HOLD section
     elif st.session_state.current_section == "hold":
         if st.session_state.role == "admin" and not is_killswitch_enabled():
             with st.expander("📤 Upload Image"):
                 img = st.file_uploader("Choose image", type=["jpg", "png", "jpeg"])
                 if img:
-                    add_hold_image(st.session_state.username, img.read())
+                    add_hold_image(st.session_state.group, st.session_state.username, img.read())
         
-        images = get_hold_images()
+        images = get_hold_images(st.session_state.group)
         if images:
             for img in images:
-                iid, uploader, data, ts = img
+                iid, group, uploader, data, ts = img
                 st.markdown(f"""
                 <div class="card">
                     <div style="display: flex; justify-content: space-between;">
@@ -1253,10 +1390,11 @@ else:
                     <p>Uploaded by: {uploader}</p>
                 </div>
                 """, unsafe_allow_html=True)
-                st.image(Image.open(io.BytesIO(data)), use_container_width=True)
+                st.image(Image.open(io.BytesIO(data)), use_column_width=True)
         else:
             st.info("No images in HOLD")
 
+    # Fancy Number section
     elif st.session_state.current_section == "fancy_number":
         st.header("📱 Lycamobile Fancy Number Checker")
         st.subheader("Official Policy: Analyzes last 6 digits only for qualifying patterns")
@@ -1321,31 +1459,7 @@ else:
             - Ending with 123/555/777/999
             """)
 
-        # Test cases
-        debug_mode = st.checkbox("Show test cases", False)
-        if debug_mode:
-            test_numbers = [
-                ("16109055580", False),  # 055580 → No pattern ✗
-                ("123456", True),       # 6-digit ascending ✓
-                ("444555", True),       # Double triplets ✓
-                ("121122", True),       # Similar triplets ✓ 
-                ("111213", True),       # Incremental pairs ✓
-                ("202020", True),       # Repeating pairs ✓
-                ("010101", True),       # Alternating pairs ✓
-                ("324252", True),       # Stepping pairs ✓
-                ("7900000123", True),   # Ends with 123 ✓
-                ("123458", False),      # No pattern ✗
-                ("112233", False),      # Not in our strict rules ✗
-                ("555555", True)        # 6 identical digits ✓
-            ]
-            
-            st.markdown("### Strict Policy Validation")
-            for number, expected in test_numbers:
-                is_fancy, pattern = is_fancy_number(number)
-                result = "PASS" if is_fancy == expected else "FAIL"
-                color = "green" if result == "PASS" else "red"
-                st.write(f"<span style='color:{color}'>{number[-6:]}: {result} ({pattern})</span>", unsafe_allow_html=True)
-
+    # Admin section
     elif st.session_state.current_section == "admin" and st.session_state.role == "admin":
         if st.session_state.username.lower() == "taha kirri":
             st.subheader("🚨 System Killswitch")
@@ -1384,82 +1498,106 @@ else:
         
         st.subheader("🧹 Data Management")
         
-        with st.expander("❌ Clear All Requests"):
+        with st.expander("❌ Clear All Requests (Current Group)"):
             with st.form("clear_requests_form"):
-                st.warning("This will permanently delete ALL requests and their comments!")
-                if st.form_submit_button("Clear All Requests"):
-                    if clear_all_requests():
-                        st.success("All requests deleted!")
+                st.warning("This will permanently delete ALL requests for your group!")
+                if st.form_submit_button("Clear Group Requests"):
+                    if clear_all_requests(st.session_state.group):
+                        st.success("All group requests deleted!")
                         st.rerun()
 
-        with st.expander("❌ Clear All Mistakes"):
+        with st.expander("❌ Clear All Mistakes (Current Group)"):
             with st.form("clear_mistakes_form"):
-                st.warning("This will permanently delete ALL mistakes!")
-                if st.form_submit_button("Clear All Mistakes"):
-                    if clear_all_mistakes():
-                        st.success("All mistakes deleted!")
+                st.warning("This will permanently delete ALL mistakes for your group!")
+                if st.form_submit_button("Clear Group Mistakes"):
+                    if clear_all_mistakes(st.session_state.group):
+                        st.success("All group mistakes deleted!")
                         st.rerun()
 
-        with st.expander("❌ Clear All Chat Messages"):
+        with st.expander("❌ Clear All Chat Messages (Current Group)"):
             with st.form("clear_chat_form"):
-                st.warning("This will permanently delete ALL chat messages!")
-                if st.form_submit_button("Clear All Chat"):
-                    if clear_all_group_messages():
-                        st.success("All chat messages deleted!")
+                st.warning("This will permanently delete ALL chat messages for your group!")
+                if st.form_submit_button("Clear Group Chat"):
+                    if clear_all_group_messages(st.session_state.group):
+                        st.success("All group chat messages deleted!")
                         st.rerun()
 
-        with st.expander("❌ Clear All HOLD Images"):
+        with st.expander("❌ Clear All HOLD Images (Current Group)"):
             with st.form("clear_hold_form"):
-                st.warning("This will permanently delete ALL HOLD images!")
-                if st.form_submit_button("Clear All HOLD Images"):
-                    if clear_hold_images():
-                        st.success("All HOLD images deleted!")
+                st.warning("This will permanently delete ALL HOLD images for your group!")
+                if st.form_submit_button("Clear Group HOLD Images"):
+                    if clear_hold_images(st.session_state.group):
+                        st.success("All group HOLD images deleted!")
                         st.rerun()
 
-        with st.expander("❌ Clear All Break Bookings"):
+        with st.expander("❌ Clear All Break Bookings (Current Group)"):
             with st.form("clear_breaks_form"):
-                st.warning("This will permanently delete ALL break bookings!")
-                if st.form_submit_button("Clear All Break Bookings"):
-                    if clear_all_break_bookings():
-                        st.success("All break bookings deleted!")
+                st.warning("This will permanently delete ALL break bookings for your group!")
+                if st.form_submit_button("Clear Group Break Bookings"):
+                    if clear_all_break_bookings(st.session_state.group):
+                        st.success("All group break bookings deleted!")
                         st.rerun()
 
-        with st.expander("💣 Clear ALL Data"):
-            with st.form("nuclear_form"):
-                st.error("THIS WILL DELETE EVERYTHING IN THE SYSTEM!")
-                if st.form_submit_button("🚨 Execute Full System Wipe"):
-                    try:
-                        clear_all_requests()
-                        clear_all_mistakes()
-                        clear_all_group_messages()
-                        clear_hold_images()
-                        clear_all_break_bookings()
-                        st.success("All system data deleted!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error during deletion: {str(e)}")
+        st.markdown("---")
+        st.subheader("Group Management")
+        
+        # Add new group
+        with st.expander("➕ Add New Group"):
+            with st.form("new_group_form"):
+                new_group = st.text_input("Group Name")
+                if st.form_submit_button("Create Group"):
+                    if new_group:
+                        if add_group(new_group):
+                            st.success(f"Group '{new_group}' created!")
+                            st.rerun()
+                        else:
+                            st.error("Group already exists!")
+        
+        # List all groups
+        st.subheader("Existing Groups")
+        groups = get_all_groups()
+        for group in groups:
+            cols = st.columns([3, 1])
+            cols[0].write(group)
+            if cols[1].button("Delete", key=f"del_group_{group}") and group != "General":
+                if delete_group(group):
+                    st.success(f"Group '{group}' deleted!")
+                    st.rerun()
+                else:
+                    st.error("Could not delete group")
         
         st.markdown("---")
         st.subheader("User Management")
-        if not is_killswitch_enabled():
-            with st.form("add_user"):
-                user = st.text_input("Username")
-                pwd = st.text_input("Password", type="password")
-                role = st.selectbox("Role", ["agent", "admin"])
-                if st.form_submit_button("Add User"):
-                    if user and pwd:
-                        add_user(user, pwd, role)
-                        st.rerun()
         
+        # Add new user
+        if not is_killswitch_enabled():
+            with st.expander("➕ Add New User"):
+                with st.form("add_user_form"):
+                    user = st.text_input("Username")
+                    pwd = st.text_input("Password", type="password")
+                    role = st.selectbox("Role", ["agent", "admin"])
+                    group = st.selectbox("Group", get_all_groups())
+                    if st.form_submit_button("Add User"):
+                        if user and pwd:
+                            if add_user(user, pwd, role, group):
+                                st.success("User added!")
+                                st.rerun()
+                            else:
+                                st.error("Username already exists")
+        
+        # User list with group assignment
         st.subheader("Existing Users")
         users = get_all_users()
-        for uid, uname, urole in users:
-            cols = st.columns([3, 1, 1])
+        for uid, uname, urole, ugroup in users:
+            cols = st.columns([3, 1, 2, 1])
             cols[0].write(uname)
             cols[1].write(urole)
-            if cols[2].button("Delete", key=f"del_{uid}") and not is_killswitch_enabled():
-                delete_user(uid)
+            new_group = cols[2].selectbox("Group", get_all_groups(), 
+                                        index=get_all_groups().index(ugroup), 
+                                        key=f"group_{uid}")
+            if cols[3].button("Update", key=f"upd_{uid}"):
+                update_user_group(uid, new_group)
                 st.rerun()
 
 if __name__ == "__main__":
-    st.write("Request Management System")
+    st.write("Multi-Group Request Management System")
