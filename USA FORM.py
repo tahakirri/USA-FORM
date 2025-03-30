@@ -249,55 +249,64 @@ def admin_dashboard():
                 st.success("Template updated successfully!")
     
     # Break limits management
-    st.header("Break Limits Management")
-    if st.session_state.current_template:
-        template = st.session_state.templates[st.session_state.current_template]
-        
-        # Initialize limits if not exists
-        if st.session_state.current_template not in st.session_state.break_limits:
-            st.session_state.break_limits[st.session_state.current_template] = {
-                "lunch": {time: 5 for time in template["lunch_breaks"]},
-                "early_tea": {time: 3 for time in template["tea_breaks"]["early"]},
-                "late_tea": {time: 3 for time in template["tea_breaks"]["late"]}
-            }
-        
-        st.subheader("Lunch Break Limits")
-        lunch_cols = st.columns(len(template["lunch_breaks"]))
-        for i, time_slot in enumerate(template["lunch_breaks"]):
-            with lunch_cols[i]:
-                st.session_state.break_limits[st.session_state.current_template]["lunch"][time_slot] = st.number_input(
-                    f"Max at {time_slot}",
-                    min_value=1,
-                    value=st.session_state.break_limits[st.session_state.current_template]["lunch"].get(time_slot, 5),
-                    key=f"lunch_limit_{time_slot}"
-                )
-        
-        st.subheader("Early Tea Break Limits")
-        early_tea_cols = st.columns(len(template["tea_breaks"]["early"]))
-        for i, time_slot in enumerate(template["tea_breaks"]["early"]):
-            with early_tea_cols[i]:
-                st.session_state.break_limits[st.session_state.current_template]["early_tea"][time_slot] = st.number_input(
-                    f"Max at {time_slot}",
-                    min_value=1,
-                    value=st.session_state.break_limits[st.session_state.current_template]["early_tea"].get(time_slot, 3),
-                    key=f"early_tea_limit_{time_slot}"
-                )
-        
-        st.subheader("Late Tea Break Limits")
-        late_tea_cols = st.columns(len(template["tea_breaks"]["late"]))
-        for i, time_slot in enumerate(template["tea_breaks"]["late"]):
-            with late_tea_cols[i]:
-                st.session_state.break_limits[st.session_state.current_template]["late_tea"][time_slot] = st.number_input(
-                    f"Max at {time_slot}",
-                    min_value=1,
-                    value=st.session_state.break_limits[st.session_state.current_template]["late_tea"].get(time_slot, 3),
-                    key=f"late_tea_limit_{time_slot}"
-                )
-        
-        if st.button("Save Break Limits"):
-            save_data()
-            st.success("Break limits saved successfully!")
+st.header("Break Limits Management")
+if st.session_state.current_template:
+    template = st.session_state.templates[st.session_state.current_template]
     
+    # Initialize limits if not exists
+    if st.session_state.current_template not in st.session_state.break_limits:
+        st.session_state.break_limits[st.session_state.current_template] = {
+            "lunch": {time: 5 for time in template["lunch_breaks"]},
+            "early_tea": {time: 3 for time in template["tea_breaks"]["early"]},
+            "late_tea": {time: 3 for time in template["tea_breaks"]["late"]}
+        }
+    
+    st.subheader("Lunch Break Limits")
+    lunch_cols = st.columns(len(template["lunch_breaks"]))
+    for i, time_slot in enumerate(template["lunch_breaks"]):
+        with lunch_cols[i]:
+            # Use number_input with step=1 to ensure whole numbers
+            new_limit = st.number_input(
+                f"Max at {time_slot}",
+                min_value=1,
+                max_value=50,
+                value=st.session_state.break_limits[st.session_state.current_template]["lunch"].get(time_slot, 5),
+                step=1,
+                key=f"lunch_limit_{time_slot}"
+            )
+            st.session_state.break_limits[st.session_state.current_template]["lunch"][time_slot] = new_limit
+    
+    st.subheader("Early Tea Break Limits")
+    early_tea_cols = st.columns(len(template["tea_breaks"]["early"]))
+    for i, time_slot in enumerate(template["tea_breaks"]["early"]):
+        with early_tea_cols[i]:
+            new_limit = st.number_input(
+                f"Max at {time_slot}",
+                min_value=1,
+                max_value=50,
+                value=st.session_state.break_limits[st.session_state.current_template]["early_tea"].get(time_slot, 3),
+                step=1,
+                key=f"early_tea_limit_{time_slot}"
+            )
+            st.session_state.break_limits[st.session_state.current_template]["early_tea"][time_slot] = new_limit
+    
+    st.subheader("Late Tea Break Limits")
+    late_tea_cols = st.columns(len(template["tea_breaks"]["late"]))
+    for i, time_slot in enumerate(template["tea_breaks"]["late"]):
+        with late_tea_cols[i]:
+            new_limit = st.number_input(
+                f"Max at {time_slot}",
+                min_value=1,
+                max_value=50,
+                value=st.session_state.break_limits[st.session_state.current_template]["late_tea"].get(time_slot, 3),
+                step=1,
+                key=f"late_tea_limit_{time_slot}"
+            )
+            st.session_state.break_limits[st.session_state.current_template]["late_tea"][time_slot] = new_limit
+    
+    if st.button("Save Break Limits"):
+        save_data()
+        st.success("Break limits saved successfully!")
     # View all bookings
     st.header("All Bookings")
     if st.session_state.agent_bookings:
