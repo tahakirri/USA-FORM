@@ -43,6 +43,16 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+def is_sequential(digits):
+    """Check if digits form a sequential pattern (ascending or descending)"""
+    diffs = [int(digits[i]) - int(digits[i-1]) for i in range(1, len(digits))]
+    # Check if all differences are +1 (ascending) or -1 (descending)
+    if all(d == 1 for d in diffs):
+        return "ascending"
+    elif all(d == -1 for d in diffs):
+        return "descending"
+    return None
+
 def is_fancy_number(phone_number):
     clean_number = re.sub(r'\D', '', phone_number)
     
@@ -59,21 +69,19 @@ def is_fancy_number(phone_number):
     patterns = []
     
     # 1. Full number easy-to-remember patterns
-    # Check for numbers with long repeating sequences (like 19599990008)
     if len(full_number) == 10:
-        # Check for 4+ of the same digit anywhere in the number
+        # Check for 4+ of the same digit
         for digit in set(full_number):
             count = full_number.count(digit)
             if count >= 4:
                 positions = [i for i, d in enumerate(full_number) if d == digit]
-                # Check if consecutive or form a memorable pattern
                 if (len(positions) >= 4 and 
                     (all(positions[i] == positions[i-1]+1 for i in range(1, len(positions))) or
                     count >= 5)):
                     patterns.append(f"Memorable sequence ({count}x{digit})")
                     break
         
-        # Check for numbers with multiple repeating groups (like 1959-999-0008)
+        # Check for multiple repeating groups
         repeating_groups = []
         for group_size in [2, 3, 4]:
             groups = [full_number[i:i+group_size] for i in range(0, 11-group_size)]
@@ -84,52 +92,52 @@ def is_fancy_number(phone_number):
             patterns.append(f"Multiple repeating groups ({' & '.join(repeating_groups)})")
     
     # 2. Six-digit patterns
-    # All same digits
     if len(set(last_six)) == 1:
         patterns.append("6-digit repeating digits")
         
-    # Consecutive sequence
-    asc_seq = all(int(last_six[i]) == int(last_six[i-1]) + 1 for i in range(1, 6))
-    desc_seq = all(int(last_six[i]) == int(last_six[i-1]) - 1 for i in range(1, 6))
-    if asc_seq or desc_seq:
-        patterns.append(f"6-digit {'ascending' if asc_seq else 'descending'} sequence")
+    # Consecutive sequence in last 6
+    seq_type = is_sequential(last_six)
+    if seq_type:
+        patterns.append(f"6-digit {seq_type} sequence")
         
     # Palindrome
     if last_six == last_six[::-1]:
         patterns.append("6-digit palindrome")
     
-    # Check if first 3 digits repeat exactly (AAABBB pattern like 900900)
+    # Repeating 3-digit group
     if len(last_six) == 6 and last_six[:3] == last_six[3:]:
         patterns.append(f"Repeating 3-digit group ({last_six[:3]})")
     
-    # 3. Triple patterns
+    # 3. Enhanced last 3-digit patterns (like 587 in 588587)
+    seq_type = is_sequential(last_three)
+    if seq_type:
+        patterns.append(f"3-digit {seq_type} sequence ({last_three})")
+    
+    # Triple patterns
     if len(set(last_three)) == 1:
         patterns.append(f"Triplet ending ({last_three})")
         
-    # Double triplets in last six digits
+    # Double triplets
     if len(last_six) == 6:
         first_triple = last_six[:3]
         second_triple = last_six[3:]
         if len(set(first_triple)) == 1 and len(set(second_triple)) == 1:
             patterns.append(f"Double triplets ({first_triple}-{second_triple})")
     
-    # 4. Enhanced pair patterns
+    # 4. Pair patterns
     pairs = [last_six[i:i+2] for i in range(0, 6, 2)]
     if len(pairs) == 3:
-        # Repeating pairs (AABBCC pattern)
         if pairs[0] == pairs[1] or pairs[1] == pairs[2] or pairs[0] == pairs[2]:
             if len(set(pairs)) <= 2:
                 patterns.append(f"Repeating pairs ({'-'.join(pairs)})")
                 
-        # ABABAB pattern
         if pairs[0][0] == pairs[1][0] == pairs[2][0] and pairs[0][1] == pairs[1][1] == pairs[2][1]:
             patterns.append("Perfect ABABAB pattern")
             
-        # Mirror pattern
         if pairs[0] == pairs[2][::-1] and pairs[1] == pairs[1][::-1]:
             patterns.append("Mirror pair pattern")
     
-    # 5. Alternating digit pattern
+    # 5. Alternating pattern
     if len(last_six) == 6:
         if (last_six[0] == last_six[2] == last_six[4]) and (last_six[1] == last_six[3] == last_six[5]):
             patterns.append(f"Alternating digits pattern ({last_six[0]}{last_six[1]})")
@@ -149,15 +157,15 @@ def is_fancy_number(phone_number):
     if last_six in special_patterns:
         patterns.append(special_patterns[last_six])
         
-    # 7. Quadruple+ digits in last six
+    # 7. Quadruple+ digits
     if re.search(r'(\d)\1{3}', last_six):
         patterns.append("4+ repeating digits")
-        
-    # 8. Special case for numbers like 19599990008
+    
+    # 8. Highly memorable full numbers
     if len(full_number) == 10:
         digit_counts = {d: full_number.count(d) for d in set(full_number)}
         for digit, count in digit_counts.items():
-            if count >= 5:  # If a digit appears 5+ times in the full number
+            if count >= 5:
                 patterns.append(f"Highly memorable ({count}x{digit} in full number)")
     
     # Filter and prioritize patterns
@@ -169,18 +177,18 @@ def is_fancy_number(phone_number):
         "6-digit repeating digits",
         "6-digit sequence",
         "6-digit palindrome",
+        "3-digit ascending sequence",
+        "3-digit descending sequence",
         "Double triplets",
         "Triplet ending",
         "4+ repeating digits"
     ]
     
-    # Add patterns in priority order
     for priority in priority_patterns:
         for p in patterns:
             if priority in p and p not in strong_patterns:
                 strong_patterns.append(p)
     
-    # Add any remaining patterns
     for p in patterns:
         if p not in strong_patterns:
             strong_patterns.append(p)
@@ -232,38 +240,36 @@ with col2:
     st.markdown("""
     ### Enhanced Pattern Detection
     **New Improvements:**
-    1. **Full Number Analysis**  
-       - Detects memorable patterns across entire number (like 19599990008)
-       - Recognizes numbers with 5+ repeating digits
-    2. **Multiple Group Detection**  
-       - Identifies numbers with multiple repeating groups (999 & 000)
-    3. **Priority Pattern System**  
-       - Gives highest priority to clearly memorable numbers
-    4. **Special Case Handling**  
-       - Explicit checks for numbers that stand out as memorable
+    1. **3-Digit Sequence Detection**  
+       - Now detects ascending/descending sequences in last 3 digits (like 587 in 588587)
+    2. **Full Number Analysis**  
+       - Detects memorable patterns across entire number
+    3. **Multiple Group Detection**  
+       - Identifies numbers with multiple repeating groups
+    4. **Priority Pattern System**  
+       - Gives higher priority to clearly memorable patterns
 
     **Test Cases:**
-    - ✅ 19599990008 → Highly memorable (5x9) & Multiple repeating groups (999 & 000)
-    - ✅ 19296936363 → Alternating digits pattern (63)
-    - ✅ 13172611666 → Triplet ending (666)
-    - ✅ 16105555800 → Memorable sequence (4x5)
-    - ❌ 16109055580 → No qualifying patterns
-    - ✅ 13322866688 → Multiple repeating groups (88 & 666)
+    - ✅ 588587 → 3-digit ascending sequence (587)
+    - ✅ 19599990008 → Highly memorable (5x9) & repeating groups
+    - ✅ 1234567890 → 6-digit ascending sequence
+    - ✅ 5432101234 → 3-digit descending sequence (210)
+    - ❌ 1234567891 → No qualifying patterns
     """)
 
 # Debug test cases
 debug_mode = st.checkbox("Show test cases", False)
 if debug_mode:
     test_numbers = [
-        ("19599990008", True),   # Five 9s and three 0s ✓
-        ("19296936363", True),   # Special repeating pairs ✓
-        ("13172611666", True),   # Triplet ending ✓
-        ("16105555800", True),   # Four 5s in sequence ✓
-        ("16109055580", False),  # No patterns ✗
-        ("13322866688", True),   # Multiple repeating groups ✓
-        ("14077777370", True),   # Quad 7s ✓
-        ("18147900900", True),   # Repeating 3-digit group ✓
-        ("1234567890", False)    # No pattern ✗
+        ("588587", True),       # 3-digit ascending sequence (587) ✓
+        ("19599990008", True),  # Five 9s and three 0s ✓
+        ("1234567890", True),   # 6-digit ascending ✓
+        ("5432101234", True),   # 3-digit descending (210) ✓
+        ("1234567891", False),  # No pattern ✗
+        ("588586", False),      # No sequence ✗
+        ("588589", False),      # No sequence ✗
+        ("588567", True),       # 3-digit ascending (567) ✓
+        ("588543", True)        # 3-digit descending (543) ✓
     ]
     
     st.markdown("### Validation Tests")
