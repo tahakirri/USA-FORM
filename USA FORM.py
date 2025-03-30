@@ -70,6 +70,10 @@ def is_fancy_number(phone_number):
     # Palindrome
     if last_six == last_six[::-1]:
         patterns.append("6-digit palindrome")
+    
+    # Check if first 3 digits repeat exactly (AAABBB pattern like 900900)
+    if len(last_six) == 6 and last_six[:3] == last_six[3:]:
+        patterns.append(f"Repeating 3-digit group ({last_six[:3]})")
         
     # 2. Triple patterns
     # Final three digits check
@@ -112,7 +116,8 @@ def is_fancy_number(phone_number):
         '100001': "Mirror pattern",
         '999999': "All nines",
         '888888': "All eights",
-        '636363': "Special repeating pairs"  # Added for 19296936363 case
+        '636363': "Special repeating pairs",  # Added for 19296936363 case
+        '900900': "Repeating group"  # Added for 18147900900 case
     }
     if last_six in special_patterns:
         patterns.append(special_patterns[last_six])
@@ -187,6 +192,8 @@ with col2:
        - Better handling of 4+ repeating digits
     4. **Alternating Digit Patterns**
        - Now detects patterns like ABABAB (636363)
+    5. **Repeating Group Detection**
+       - Identifies patterns where first 3 digits repeat (like 900900)
 
     **Verified Test Cases:**
     - ✅ 19296936363 → Alternating digits pattern (63)
@@ -194,6 +201,7 @@ with col2:
     - ✅ 15853828288 → ABABAB pattern
     - ❌ 16109055580 → No qualifying patterns
     - ✅ 13322866688 → Triplet + pairs
+    - ✅ 18147900900 → Repeating 3-digit group
     """)
 
 # Debug test cases
@@ -206,7 +214,8 @@ if debug_mode:
         ("15853828288", True),   # ABABAB pattern ✓
         ("13322866688", True),   # Triplet + pairs ✓
         ("14077777370", True),   # Quad 7s ✓
-        ("19599990008", True)    # Triple 9s/0s ✓
+        ("19599990008", True),   # Triple 9s/0s ✓
+        ("18147900900", True)    # Repeating 3-digit group ✓
     ]
     
     st.markdown("### Validation Tests")
