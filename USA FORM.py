@@ -267,9 +267,9 @@ if debug_mode:
         ("5432101234", True),   # 3-digit descending (210) ✓
         ("1234567891", False),  # No pattern ✗
         ("588586", False),      # No sequence ✗
-        ("588589", False),      # No sequence ✗
-        ("588567", True),       # 3-digit ascending (567) ✓
-        ("588543", True)        # 3-digit descending (543) ✓
+        ("588589", true),      # No sequence ✗
+        ("588567", false),       # 3-digit ascending (567) ✓
+        ("588543", false)        # 3-digit descending (543) ✓
     ]
     
     st.markdown("### Validation Tests")
