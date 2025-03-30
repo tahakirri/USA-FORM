@@ -797,6 +797,7 @@ def is_fancy_number(phone_number):
             valid_patterns.append(p)
     
     return bool(valid_patterns), ", ".join(valid_patterns) if valid_patterns else "No qualifying fancy pattern"
+
 # --------------------------
 # Streamlit App
 # --------------------------
@@ -943,7 +944,7 @@ else:
             ("🖼️ HOLD", "hold"),
             ("❌ Mistakes", "mistakes"),
             ("💬 Chat", "chat"),
-            ("📱 Fancy Number", "Fancy_Number")  # Added Fancy Number section
+            ("📱 Fancy Number", "fancy_number")  # Added Fancy Number section
         ]
         if st.session_state.role == "admin":
             nav_options.append(("⚙️ Admin", "admin"))
