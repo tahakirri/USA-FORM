@@ -688,6 +688,21 @@ def is_fancy_number(phone_number):
     if clean_number == "13322866688":
         patterns.append("Special VIP number (13322866688)")
     
+    # Check for ABBBAA pattern (like 566655)
+    if (len(last_six) == 6 and 
+        last_six[0] == last_six[5] and 
+        last_six[1] == last_six[2] == last_six[3] and 
+        last_six[4] == last_six[0] and 
+        last_six[0] != last_six[1]):
+        patterns.append("ABBBAA pattern (e.g., 566655)")
+    
+    # Check for ABBBA pattern (like 233322)
+    if (len(last_six) >= 5 and 
+        last_six[0] == last_six[4] and 
+        last_six[1] == last_six[2] == last_six[3] and 
+        last_six[0] != last_six[1]):
+        patterns.append("ABBBA pattern (e.g., 233322)")
+    
     # 1. 6-digit patterns (strict matches only)
     # All same digits (666666)
     if len(set(last_six)) == 1:
@@ -763,6 +778,8 @@ def is_fancy_number(phone_number):
     for p in patterns:
         if any(rule in p for rule in [
             "Special VIP number",
+            "ABBBAA pattern",
+            "ABBBA pattern",
             "6 identical digits",
             "6-digit ascending sequence",
             "6-digit descending sequence",
@@ -780,7 +797,6 @@ def is_fancy_number(phone_number):
             valid_patterns.append(p)
     
     return bool(valid_patterns), ", ".join(valid_patterns) if valid_patterns else "No qualifying fancy pattern"
-
 # --------------------------
 # Streamlit App
 # --------------------------
