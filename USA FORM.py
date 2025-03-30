@@ -943,7 +943,7 @@ else:
             ("🖼️ HOLD", "hold"),
             ("❌ Mistakes", "mistakes"),
             ("💬 Chat", "chat"),
-            ("📱 Fancy Number", "fancy_number")  # Added Fancy Number section
+            ("📱 Fancy Number", "Fancy Number")  # Added Fancy Number section
         ]
         if st.session_state.role == "admin":
             nav_options.append(("⚙️ Admin", "admin"))
