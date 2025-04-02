@@ -1,0 +1,28 @@
+name: Download Spotify Track
+
+on:
+  workflow_dispatch:
+    inputs:
+      spotify_url:
+        description: 'Spotify Track URL'
+        required: true
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          pip install spotdl
+
+      - name: Download track
+        run: |
+          python -m spotdl download "${{ github.event.inputs.spotify_url }}"
+          ls -la  # Show downloaded files
