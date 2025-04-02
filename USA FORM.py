@@ -1,98 +1,67 @@
-import os
-import subprocess
 import streamlit as st
-from dotenv import load_dotenv
-import spotipy
-from spotipy.oauth2 import SpotifyOAuth
+import subprocess
+import os
 
-# Load environment variables
-load_dotenv()
+# App title
+st.title("🎵 Spotify Track Downloader")
+st.markdown("Download any Spotify track as an MP3 using `spotdl`.")
 
-# Configure Spotify API
-os.environ["SPOTIPY_CLIENT_ID"] = os.getenv("SPOTIPY_CLIENT_ID")
-os.environ["SPOTIPY_CLIENT_SECRET"] = os.getenv("SPOTIPY_CLIENT_SECRET")
-os.environ["SPOTIPY_REDIRECT_URI"] = os.getenv("SPOTIPY_REDIRECT_URI")
+# Input: Spotify Track URL
+spotify_url = st.text_input(
+    "Enter Spotify Track URL:",
+    placeholder="e.g., https://open.spotify.com/track/..."
+)
 
-def get_playlist_name(playlist_url):
-    """Extract playlist name using Spotipy"""
-    sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope="playlist-read-private"))
-    playlist_id = playlist_url.split("/")[-1].split("?")[0]
-    playlist = sp.playlist(playlist_id)
-    return playlist['name']
-
-def download_playlist(playlist_url):
-    """Download playlist using spotdl"""
-    try:
-        command = f"spotdl download {playlist_url}"
-        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        
-        st.info("Download started... This may take a while depending on playlist size.")
-        
-        # Display progress
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        while True:
-            output = process.stdout.readline()
-            if output == b'' and process.poll() is not None:
-                break
-            if output:
-                line = output.decode().strip()
-                if "Downloaded" in line:
-                    status_text.text(line)
-                # Update progress (this is a simple approximation)
-                if "Processing song" in line:
-                    try:
-                        current = int(line.split("[")[1].split("/")[0])
-                        total = int(line.split("/")[1].split("]")[0])
-                        progress_bar.progress(current / total)
-                    except:
-                        pass
-        
-        if process.returncode == 0:
-            st.success("Download completed successfully!")
-            return True
-        else:
-            st.error("Download failed. Please check the URL and try again.")
-            return False
-            
-    except Exception as e:
-        st.error(f"An error occurred: {str(e)}")
-        return False
-
-# Streamlit UI
-st.title("🎵 Spotify Playlist Downloader")
-st.markdown("Download your Spotify playlists as high-quality MP3 files")
-
-playlist_url = st.text_input("Enter Spotify Playlist URL:", placeholder="https://open.spotify.com/playlist/...")
-
-if st.button("Download Playlist"):
-    if playlist_url and "open.spotify.com/playlist/" in playlist_url:
-        with st.spinner("Preparing download..."):
-            try:
-                playlist_name = get_playlist_name(playlist_url)
-                st.subheader(f"Downloading: {playlist_name}")
-                
-                # Create download directory if it doesn't exist
-                if not os.path.exists("downloads"):
-                    os.makedirs("downloads")
-                
-                # Change to downloads directory
-                os.chdir("downloads")
-                
-                # Start download
-                if download_playlist(playlist_url):
-                    st.balloons()
-            except Exception as e:
-                st.error(f"Error: {str(e)}")
+# Download button
+if st.button("Download Track"):
+    if not spotify_url:
+        st.error("Please enter a Spotify URL!")
     else:
-        st.warning("Please enter a valid Spotify playlist URL")
+        try:
+            # Run spotdl download command
+            command = f"spotdl download {spotify_url}"
+            
+            with st.spinner("Downloading track..."):
+                result = subprocess.run(
+                    command,
+                    shell=True,
+                    capture_output=True,
+                    text=True
+                )
+            
+            if result.returncode == 0:
+                st.success("Track downloaded successfully! 🎶")
+                
+                # Find the downloaded file (assuming MP3)
+                downloaded_files = [f for f in os.listdir() if f.endswith(".mp3")]
+                if downloaded_files:
+                    st.audio(downloaded_files[0])
+                    st.download_button(
+                        "Download MP3",
+                        data=open(downloaded_files[0], "rb").read(),
+                        file_name=downloaded_files[0],
+                        mime="audio/mp3"
+                    )
+                else:
+                    st.warning("File downloaded but not found in directory.")
+            else:
+                st.error(f"Error downloading track: {result.stderr}")
+        
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
 
-st.markdown("---")
-st.info("""
-**Note:** 
-- This downloads songs in the best available quality (typically 320kbps MP3)
-- Large playlists may take significant time to download
-- Songs are saved in a 'downloads' folder
-- You need Spotify API credentials (free) for this to work
+# Instructions
+st.markdown("### How to Use:")
+st.markdown("""
+1. Copy a Spotify track URL (e.g., `https://open.spotify.com/track/...`).
+2. Paste it above and click **Download Track**.
+3. Wait for the download to finish, then play or save the MP3.
+""")
+
+# Requirements note
+st.warning("""
+**Requirements:**
+- Python & `spotdl` installed (`pip install spotdl`).
+- FFmpeg must be installed for audio conversion.
+- Run this app in a terminal where `spotdl` is available.
 """)
