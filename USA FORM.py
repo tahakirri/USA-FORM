@@ -1,31 +1,53 @@
 import streamlit as st
 import subprocess
 import os
+import sys
 from pathlib import Path
 
 # Configure the app
 st.set_page_config(page_title="Spotify Downloader", page_icon="🎵")
 st.title("🎵 Spotify Track Downloader")
-st.markdown("Download any Spotify track as an MP3 using `spotdl`.")
+st.markdown("Download any Spotify track as an MP3")
+
+# Check for required packages
+try:
+    import spotdl
+except ImportError:
+    st.error("""
+    **spotdl is not installed!**
+    
+    Run this command in your terminal:
+    ```
+    pip install spotdl
+    ```
+    Then restart this app.
+    """)
+    st.stop()
 
 # Sidebar with instructions
 with st.sidebar:
     st.header("Instructions")
     st.markdown("""
     1. Copy a Spotify track URL (Share → Copy Song Link)
-    2. Paste it in the input box
-    3. Click "Download Track"
-    4. Wait for completion, then play/download
+    2. Paste below and click "Download Track"
+    3. Wait for completion (may take 1-2 minutes)
     """)
     st.markdown("---")
-    st.markdown("**Note:** Requires Python, spotdl, and FFmpeg installed.")
+    st.markdown("**Requirements:**")
+    st.code("""
+    pip install spotdl
+    # Plus FFmpeg installed on your system
+    """)
 
-# Input box for Spotify URL
-spotify_url = st.text_input(
-    "Enter Spotify Track URL:",
-    placeholder="https://open.spotify.com/track/...",
-    key="url_input"
-)
+def get_spotdl_command():
+    """Determine the correct spotdl command format"""
+    try:
+        # Try direct spotdl command first
+        subprocess.run(["spotdl", "--version"], check=True, capture_output=True)
+        return "spotdl download {url}"
+    except:
+        # Fall back to python module format
+        return f"{sys.executable} -m spotdl download {{url}}"
 
 def find_downloaded_file():
     """Find the most recently downloaded MP3 file"""
@@ -36,41 +58,34 @@ def find_downloaded_file():
     )
     return mp3_files[0] if mp3_files else None
 
+# Main app
+spotify_url = st.text_input(
+    "Paste Spotify Track URL:",
+    placeholder="https://open.spotify.com/track/...",
+    key="url_input"
+)
+
 if st.button("Download Track", type="primary"):
     if not spotify_url:
         st.error("Please enter a Spotify URL!")
     else:
-        with st.spinner("Downloading track... This may take a minute"):
+        with st.spinner("Downloading... (This may take 1-2 minutes)"):
             try:
-                # Use python -m spotdl to ensure it runs correctly
-                command = f"python -m spotdl download {spotify_url}"
+                # Get the correct command format
+                command_template = get_spotdl_command()
+                command = command_template.format(url=spotify_url)
                 
                 # Run the command
-                process = subprocess.Popen(
+                process = subprocess.run(
                     command,
                     shell=True,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    universal_newlines=True
+                    text=True
                 )
                 
-                # Display progress in real-time
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                while True:
-                    output = process.stdout.readline()
-                    if output == '' and process.poll() is not None:
-                        break
-                    if output:
-                        status_text.text(output.strip())
-                        if "Downloaded" in output:
-                            progress_bar.progress(100)
-                
-                # Check for errors
-                return_code = process.poll()
-                if return_code == 0:
-                    st.success("Download completed successfully!")
+                if process.returncode == 0:
+                    st.success("Download completed!")
                     
                     # Find and display the downloaded file
                     downloaded_file = find_downloaded_file()
@@ -86,13 +101,15 @@ if st.button("Download Track", type="primary"):
                                 mime="audio/mp3"
                             )
                     else:
-                        st.warning("File downloaded but not found.")
+                        st.warning("Downloaded but file not found")
                 else:
-                    st.error(f"Error downloading track: {process.stderr.read()}")
+                    error_msg = process.stderr or "Unknown error occurred"
+                    st.error(f"Download failed: {error_msg}")
+                    st.code(process.stdout)  # Show full output for debugging
             
             except Exception as e:
-                st.error(f"An error occurred: {str(e)}")
+                st.error(f"Error: {str(e)}")
 
 # Footer
 st.markdown("---")
-st.caption("Note: This tool is for personal use only. Please respect copyright laws.")
+st.caption("For personal use only. Please respect copyright laws.")
