@@ -1,8 +1,43 @@
-import streamlit as st
 import subprocess
-import os
 import sys
+import streamlit as st
+import os
 from pathlib import Path
+
+def install_dependencies():
+    """Install required dependencies if not present"""
+    try:
+        # Check if dependencies are already installed
+        try:
+            import streamlit
+            import spotdl
+            subprocess.run(["ffmpeg", "-version"], check=True, capture_output=True)
+            return True
+        except:
+            pass
+
+        # Install Python packages
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "streamlit", "spotdl"])
+        
+        # Install FFmpeg based on OS
+        if sys.platform == "linux":
+            subprocess.run(["sudo", "apt-get", "update"], check=True)
+            subprocess.run(["sudo", "apt-get", "install", "-y", "ffmpeg"], check=True)
+        elif sys.platform == "darwin":
+            subprocess.run(["brew", "install", "ffmpeg"], check=True)
+        
+        return True
+    except subprocess.CalledProcessError as e:
+        st.error(f"Error installing dependencies: {e.stderr if e.stderr else str(e)}")
+        return False
+    except Exception as e:
+        st.error(f"Unexpected error: {str(e)}")
+        return False
+
+# Install dependencies before running the app
+if not install_dependencies():
+    st.error("Failed to install required dependencies. Please install manually.")
+    st.stop()
 
 # App Configuration
 st.set_page_config(
@@ -43,21 +78,6 @@ def check_ffmpeg():
     except:
         return False
 
-def install_spotdl():
-    """Install spotdl package"""
-    with st.spinner("Installing spotdl..."):
-        try:
-            subprocess.run(
-                [sys.executable, "-m", "pip", "install", "spotdl"],
-                check=True,
-                capture_output=True,
-                text=True
-            )
-            return True
-        except subprocess.CalledProcessError as e:
-            st.error(f"Failed to install spotdl: {e.stderr if e.stderr else 'Unknown error'}")
-            return False
-
 def download_track(url):
     """Download a Spotify track"""
     try:
@@ -87,30 +107,18 @@ def download_track(url):
 st.title("🎧 Spotify Track Downloader")
 st.markdown("Download any Spotify track as an MP3 file")
 
-# Dependency Check
+# Dependency verification (redundant check after installation)
 if not is_installed("spotdl") or not check_ffmpeg():
-    st.warning("Required dependencies are missing!")
-    
-    if st.button("Install Dependencies Automatically"):
-        if install_spotdl():
-            st.success("spotdl installed successfully!")
-            if not check_ffmpeg():
-                st.warning("""
-                FFmpeg is still required. Please install it manually:
-                - **Windows**: Download from [ffmpeg.org](https://ffmpeg.org/)
-                - **Mac**: `brew install ffmpeg`
-                - **Linux**: `sudo apt install ffmpeg`
-                """)
-            st.experimental_rerun()
-    else:
-        st.info("""
-        You need to install:
-        ```
-        pip install spotdl
-        ```
-        And FFmpeg for your operating system.
-        """)
-        st.stop()
+    st.error("""
+    Required dependencies are still missing after installation attempt.
+    Please install manually:
+    - Python packages: `pip install streamlit spotdl`
+    - FFmpeg:
+        - Linux: `sudo apt install ffmpeg`
+        - Mac: `brew install ffmpeg`
+        - Windows: Download from ffmpeg.org
+    """)
+    st.stop()
 
 # Main Download Interface
 with st.form("download_form"):
