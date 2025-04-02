@@ -4,127 +4,158 @@ import os
 import sys
 from pathlib import Path
 
-# Configure the app
-st.set_page_config(page_title="Spotify Downloader", page_icon="🎵")
-st.title("🎵 Spotify Track Downloader")
+# App Configuration
+st.set_page_config(
+    page_title="Spotify Track Downloader",
+    page_icon="🎵",
+    layout="centered"
+)
 
-def check_dependencies():
-    """Check if spotdl and FFmpeg are installed"""
+# Custom CSS for better appearance
+st.markdown("""
+<style>
+    .stDownloadButton button {
+        width: 100%;
+    }
+    .stSpinner > div {
+        text-align: center;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+def is_installed(package):
+    """Check if a Python package is installed"""
     try:
-        # Check spotdl
-        result = subprocess.run([sys.executable, "-m", "spotdl", "--version"],
-                              capture_output=True, text=True)
-        if result.returncode != 0:
-            return False
-        
-        # Check FFmpeg
-        result = subprocess.run(["ffmpeg", "-version"],
-                              capture_output=True, text=True)
+        __import__(package)
+        return True
+    except ImportError:
+        return False
+
+def check_ffmpeg():
+    """Check if FFmpeg is available"""
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-version"],
+            capture_output=True,
+            text=True
+        )
         return result.returncode == 0
     except:
         return False
 
-def install_dependencies():
-    """Install required packages with proper error handling"""
-    try:
-        # Install spotdl
-        result = subprocess.run([sys.executable, "-m", "pip", "install", "spotdl"],
-                              capture_output=True, text=True)
-        if result.returncode != 0:
-            error_msg = result.stderr if result.stderr else "Unknown error occurred"
-            st.error(f"spotdl installation failed: {error_msg}")
+def install_spotdl():
+    """Install spotdl package"""
+    with st.spinner("Installing spotdl..."):
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "spotdl"],
+                check=True,
+                capture_output=True,
+                text=True
+            )
+            return True
+        except subprocess.CalledProcessError as e:
+            st.error(f"Failed to install spotdl: {e.stderr if e.stderr else 'Unknown error'}")
             return False
-        
-        # Install FFmpeg based on OS
-        if sys.platform == "linux":
-            subprocess.run(["sudo", "apt-get", "update"], check=True)
-            subprocess.run(["sudo", "apt-get", "install", "-y", "ffmpeg"], check=True)
-        elif sys.platform == "darwin":
-            subprocess.run(["brew", "install", "ffmpeg"], check=True)
-        else:
-            st.warning("Please install FFmpeg manually for your Windows system")
-        
-        return True
-    except subprocess.CalledProcessError as e:
-        error_msg = e.stderr if e.stderr else str(e)
-        st.error(f"Dependency installation failed: {error_msg}")
-        return False
-    except Exception as e:
-        st.error(f"Unexpected error: {str(e)}")
-        return False
 
-# Main app
-def main():
-    # Check dependencies
-    if not check_dependencies():
-        st.warning("Required dependencies not found!")
-        if st.button("Install Dependencies Automatically"):
-            if install_dependencies():
-                st.success("Installation successful! Please restart the app.")
-                st.balloons()
-            else:
-                st.error("""
-                Automatic installation failed. Please install manually:
-                ```
-                pip install spotdl
-                # And install FFmpeg for your system:
-                # Linux: sudo apt install ffmpeg
-                # Mac: brew install ffmpeg
-                # Windows: Download from ffmpeg.org
-                ```
+def download_track(url):
+    """Download a Spotify track"""
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "spotdl", "download", url],
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout
+        )
+        
+        if result.returncode == 0:
+            # Find the newest MP3 file in directory
+            mp3_files = sorted(
+                [f for f in os.listdir() if f.endswith(".mp3")],
+                key=lambda x: os.path.getmtime(x),
+                reverse=True
+            )
+            
+            if mp3_files:
+                return mp3_files[0]
+        return None
+    except Exception as e:
+        st.error(f"Download failed: {str(e)}")
+        return None
+
+# Main App UI
+st.title("🎧 Spotify Track Downloader")
+st.markdown("Download any Spotify track as an MP3 file")
+
+# Dependency Check
+if not is_installed("spotdl") or not check_ffmpeg():
+    st.warning("Required dependencies are missing!")
+    
+    if st.button("Install Dependencies Automatically"):
+        if install_spotdl():
+            st.success("spotdl installed successfully!")
+            if not check_ffmpeg():
+                st.warning("""
+                FFmpeg is still required. Please install it manually:
+                - **Windows**: Download from [ffmpeg.org](https://ffmpeg.org/)
+                - **Mac**: `brew install ffmpeg`
+                - **Linux**: `sudo apt install ffmpeg`
                 """)
+            st.experimental_rerun()
+    else:
+        st.info("""
+        You need to install:
+        ```
+        pip install spotdl
+        ```
+        And FFmpeg for your operating system.
+        """)
         st.stop()
 
-    def find_downloaded_file():
-        """Find the most recently downloaded MP3 file"""
-        mp3_files = sorted(
-            [f for f in os.listdir() if f.endswith(".mp3")],
-            key=lambda x: os.path.getmtime(x),
-            reverse=True
-        )
-        return mp3_files[0] if mp3_files else None
-
-    spotify_url = st.text_input(
-        "Paste Spotify Track URL:",
+# Main Download Interface
+with st.form("download_form"):
+    url = st.text_input(
+        "Spotify Track URL",
         placeholder="https://open.spotify.com/track/...",
-        key="url_input"
+        help="Right-click on a Spotify track and select 'Copy Song Link'"
     )
+    
+    submitted = st.form_submit_button("Download Track", type="primary")
 
-    if st.button("Download Track", type="primary"):
-        if not spotify_url:
-            st.error("Please enter a Spotify URL!")
-        else:
-            with st.spinner("Downloading... (This may take 1-2 minutes)"):
-                try:
-                    command = f"{sys.executable} -m spotdl download {spotify_url}"
-                    result = subprocess.run(
-                        command,
-                        shell=True,
-                        capture_output=True,
-                        text=True
-                    )
-                    
-                    if result.returncode == 0:
-                        st.success("Download completed!")
-                        downloaded_file = find_downloaded_file()
-                        if downloaded_file:
-                            st.audio(downloaded_file)
-                            with open(downloaded_file, "rb") as f:
-                                st.download_button(
-                                    "Save MP3",
-                                    f.read(),
-                                    file_name=downloaded_file,
-                                    mime="audio/mp3"
-                                )
-                        else:
-                            st.warning("File downloaded but not found in directory.")
-                    else:
-                        error_msg = result.stderr if result.stderr else "Unknown error"
-                        st.error(f"Download failed: {error_msg}")
-                        st.code(result.stdout)
+if submitted:
+    if not url:
+        st.error("Please enter a Spotify URL")
+    else:
+        with st.spinner("Downloading track... This may take a few minutes"):
+            downloaded_file = download_track(url)
+            
+            if downloaded_file:
+                st.success("Download complete!")
                 
-                except Exception as e:
-                    st.error(f"Error during download: {str(e)}")
+                # Display audio player
+                st.audio(downloaded_file)
+                
+                # Download button
+                with open(downloaded_file, "rb") as f:
+                    st.download_button(
+                        "Save MP3 File",
+                        f.read(),
+                        file_name=downloaded_file,
+                        mime="audio/mp3",
+                        key="download_mp3"
+                    )
+            else:
+                st.error("Failed to download track. Please check the URL and try again.")
 
-if __name__ == "__main__":
-    main()
+# Instructions
+with st.expander("ℹ️ How to use"):
+    st.markdown("""
+    1. Find a track on Spotify
+    2. Right-click the track → Share → Copy Song Link
+    3. Paste the URL above and click Download
+    4. Wait for processing, then download your MP3
+    """)
+
+# Footer
+st.markdown("---")
+st.caption("Note: This tool is for personal use only. Please respect copyright laws.")
