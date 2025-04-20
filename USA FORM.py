@@ -135,7 +135,7 @@ def init_db():
         """)
         
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS late_logins (
+            CREATE TABLE IF NOT EXISTS _logins (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 agent_name TEXT,
                 presence_time TEXT,
@@ -716,7 +716,7 @@ def clear_all_break_bookings():
     finally:
         conn.close()
 
-def add_late_login(agent_name, presence_time, login_time, reason):
+def add__login(agent_name, presence_time, login_time, reason):
     if is_killswitch_enabled():
         st.error("System is currently locked. Please contact the developer.")
         return False
@@ -725,7 +725,7 @@ def add_late_login(agent_name, presence_time, login_time, reason):
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO late_logins (agent_name, presence_time, login_time, reason, timestamp) 
+            INSERT INTO _logins (agent_name, presence_time, login_time, reason, timestamp) 
             VALUES (?, ?, ?, ?, ?)
         """, (agent_name, presence_time, login_time, reason,
              datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
@@ -1692,9 +1692,6 @@ else:
                     mime="text/csv"
                 )
                 
-                if st.button("Clear All Records"):
-                    clear_late_logins()
-                    st.rerun()
             else:
                 st.info("No late login records found")
         else:
@@ -1778,9 +1775,6 @@ else:
                     mime="text/csv"
                 )
                 
-                if st.button("Clear All Records"):
-                    clear_quality_issues()
-                    st.rerun()
             else:
                 st.info("No quality issue records found")
         else:
@@ -1861,10 +1855,6 @@ else:
                     file_name="midshift_issues.csv",
                     mime="text/csv"
                 )
-                
-                if st.button("Clear All Records"):
-                    clear_midshift_issues()
-                    st.rerun()
             else:
                 st.info("No mid-shift issue records found")
         else:
